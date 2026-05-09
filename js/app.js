@@ -2,11 +2,14 @@
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
 // =====================================================
-const SUPABASE_URL     = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL     = 'https://tu-proyecto.supabase.co'; // reemplazar
+const SUPABASE_ANON_KEY = 'tu-anon-key';                   // reemplazar
 const ADMIN_PASSWORD   = 'ypf2024'; // cambiar por contraseña segura
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const SUPABASE_CONFIGURED = !SUPABASE_URL.includes('tu-proyecto');
+const sb = SUPABASE_CONFIGURED
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 // =====================================================
 // STATE
@@ -60,21 +63,26 @@ function setLoading(msg = 'Cargando...') {
 // INIT
 // =====================================================
 async function init() {
+  if (!SUPABASE_CONFIGURED) { renderWelcome(); return; }
+
   if (S.isAdmin) { renderAdmin(); return; }
   if (S.choferId && S.nombre) { renderChofer(); return; }
 
   setLoading();
-  const { data } = await sb.from('choferes').select('*').eq('device_id', S.deviceId).maybeSingle();
-
-  if (data) {
-    S.choferId = data.id;
-    S.nombre   = data.nombre;
-    S.isAdmin  = data.is_admin;
-    localStorage.setItem('ypf_chofer_id', data.id);
-    localStorage.setItem('ypf_nombre',    data.nombre);
-    localStorage.setItem('ypf_is_admin',  data.is_admin);
-    if (S.isAdmin) renderAdmin(); else renderChofer();
-  } else {
+  try {
+    const { data } = await sb.from('choferes').select('*').eq('device_id', S.deviceId).maybeSingle();
+    if (data) {
+      S.choferId = data.id;
+      S.nombre   = data.nombre;
+      S.isAdmin  = data.is_admin;
+      localStorage.setItem('ypf_chofer_id', data.id);
+      localStorage.setItem('ypf_nombre',    data.nombre);
+      localStorage.setItem('ypf_is_admin',  data.is_admin);
+      if (S.isAdmin) renderAdmin(); else renderChofer();
+    } else {
+      renderWelcome();
+    }
+  } catch (e) {
     renderWelcome();
   }
 }
@@ -88,6 +96,10 @@ function renderWelcome() {
       <div class="welcome-logo">🚛</div>
       <h1 class="welcome-title">RemitosApp</h1>
       <p class="welcome-sub">Gestión de cargas y remitos</p>
+      ${!SUPABASE_CONFIGURED ? `
+      <div class="config-banner">
+        ⚠️ Configurá las credenciales de Supabase en <code>js/app.js</code> para activar la app
+      </div>` : ''}
       <div class="card welcome-card">
         <div class="field">
           <label class="field-label">Tu nombre</label>

@@ -356,16 +356,20 @@ async function submitRemito() {
   // 2. Subir fotos a Supabase Storage
   const fallidos = [];
   for (const file of S.fotosStaged) {
-    const ext  = file.name.split('.').pop().toLowerCase();
+    const ext  = (file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'jpg');
     const path = `${S.choferId}/${remito.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error: upErr } = await sb.storage.from('remito-fotos').upload(path, file, { upsert: false });
-    if (upErr) { fallidos.push(file.name); continue; }
+    if (upErr) {
+      console.error('Upload error:', upErr.message, upErr);
+      fallidos.push(`${file.name} (${upErr.message})`);
+      continue;
+    }
     const { data: urlData } = sb.storage.from('remito-fotos').getPublicUrl(path);
     await sb.from('remito_fotos').insert({ remito_id: remito.id, storage_url: urlData.publicUrl });
   }
 
   if (fallidos.length) {
-    toast(`Remito guardado. No se pudieron subir: ${fallidos.join(', ')}`, 'warn');
+    toast(`Fotos no subidas: ${fallidos.join(' | ')}`, 'warn');
   } else {
     toast('Remito enviado correctamente ✓');
   }

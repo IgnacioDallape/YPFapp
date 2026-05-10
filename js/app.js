@@ -358,7 +358,10 @@ async function submitRemito() {
   for (const file of S.fotosStaged) {
     const ext  = (file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'jpg');
     const path = `${S.choferId}/${remito.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error: upErr } = await sb.storage.from('remito-fotos').upload(path, file, { upsert: false });
+    const { error: upErr } = await sb.storage.from('remito-fotos').upload(path, file, {
+      upsert: true,
+      contentType: file.type || 'image/jpeg',
+    });
     if (upErr) {
       console.error('Upload error:', upErr.message, upErr);
       fallidos.push(`${file.name} (${upErr.message})`);

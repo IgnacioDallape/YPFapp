@@ -113,7 +113,8 @@ body {
 .form-card { display: flex; flex-direction: column; gap: 12px; }
 .form-card .section-title { margin-bottom: 0; }
 
-.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-row-2 { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 600px) { .form-row-2 { grid-template-columns: 1fr 1fr; } }
 
 .field { display: flex; flex-direction: column; gap: 5px; }
 
@@ -185,6 +186,19 @@ input[type="month"].inp { cursor: pointer; }
 }
 
 /* ── Photo upload ── */
+.foto-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.foto-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 16px 10px; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 0.88rem; font-weight: 600; transition: all 0.18s;
+  border: 2px dashed var(--color4); color: var(--text-mid); background: var(--color1);
+  font-family: 'DM Sans', sans-serif;
+}
+.foto-btn:hover { border-color: var(--color5); background: #fffbf3; color: var(--text-dark); }
+.foto-btn-cam { border-style: solid; background: var(--color5); color: white; border-color: var(--color5); }
+.foto-btn-cam:hover { background: #9e8d67; border-color: #9e8d67; color: white; }
+
+
 .req-badge { font-size: 0.73rem; color: var(--danger); font-weight: 400; }
 
 .foto-dropzone {
@@ -392,9 +406,6 @@ input[type="month"].inp { cursor: pointer; }
 .hidden { display: none !important; }
 
 /* ── Responsive ── */
-@media (max-width: 520px) {
-  .form-row-2 { grid-template-columns: 1fr; }
-}
 @media (max-width: 380px) {
   .stats-row .stat-val { font-size: 1.15rem; }
   .stats-row .stat-lbl { font-size: 0.62rem; }

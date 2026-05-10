@@ -255,13 +255,16 @@ function renderChofer() {
             <label class="field-label">
               Fotos del remito &nbsp;<span class="req-badge">mínimo 1 requerida *</span>
             </label>
-            <label class="foto-dropzone" id="foto-dropzone">
-              <input type="file" id="f-fotos" accept="image/*" multiple class="hidden">
-              <div class="foto-dropzone-inner">
-                <span class="foto-icon">📷</span>
-                <span>Tocá para agregar fotos</span>
-              </div>
-            </label>
+            <div class="foto-actions">
+              <label class="foto-btn foto-btn-cam">
+                <input type="file" id="f-fotos-cam" accept="image/*" capture="environment" class="hidden">
+                📷 Cámara
+              </label>
+              <label class="foto-btn foto-btn-gal">
+                <input type="file" id="f-fotos-gal" accept="image/*" multiple class="hidden">
+                🖼 Galería
+              </label>
+            </div>
             <div id="foto-previews" class="foto-previews"></div>
           </div>
 
@@ -296,13 +299,14 @@ function bindChoferForm() {
   $('f-fecha').addEventListener('change', checkValid);
   $('f-destino-ida').addEventListener('input', checkValid);
 
-  const fotos = $('f-fotos');
-  fotos.addEventListener('change', () => {
-    S.fotosStaged = [...S.fotosStaged, ...Array.from(fotos.files)];
-    fotos.value = '';
+  const addFotos = input => {
+    S.fotosStaged = [...S.fotosStaged, ...Array.from(input.files)];
+    input.value = '';
     renderFotoPreviews();
     checkValid();
-  });
+  };
+  $('f-fotos-cam').addEventListener('change', function() { addFotos(this); });
+  $('f-fotos-gal').addEventListener('change', function() { addFotos(this); });
 
   function renderFotoPreviews() {
     const prev = $('foto-previews');

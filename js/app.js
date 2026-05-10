@@ -367,6 +367,27 @@ function bindChoferForm() {
   btnEnviar.addEventListener('click', submitRemito);
 }
 
+function compressImage(file, maxPx = 1400) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > maxPx || h > maxPx) {
+        if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else        { w = Math.round(w * maxPx / h); h = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas toBlob failed')), 'image/jpeg', 0.85);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
 async function submitRemito() {
   const btn = $('btn-enviar');
   btn.disabled = true;
@@ -395,19 +416,24 @@ async function submitRemito() {
   // 2. Subir fotos a Supabase Storage
   const fallidos = [];
   for (const file of S.fotosStaged) {
-    const ext  = (file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'jpg');
-    const path = `${S.choferId}/${remito.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error: upErr } = await sb.storage.from('remito-fotos').upload(path, file, {
-      upsert: true,
-      contentType: file.type || 'image/jpeg',
-    });
-    if (upErr) {
-      console.error('Upload error:', upErr.message, upErr);
-      fallidos.push(`${file.name} (${upErr.message})`);
-      continue;
+    try {
+      const blob = await compressImage(file);
+      const path = `${S.choferId}/${remito.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+      const { error: upErr } = await sb.storage.from('remito-fotos').upload(path, blob, {
+        upsert: true,
+        contentType: 'image/jpeg',
+      });
+      if (upErr) {
+        console.error('Upload error:', upErr.message, upErr);
+        fallidos.push(file.name);
+        continue;
+      }
+      const { data: urlData } = sb.storage.from('remito-fotos').getPublicUrl(path);
+      await sb.from('remito_fotos').insert({ remito_id: remito.id, storage_url: urlData.publicUrl });
+    } catch (e) {
+      console.error('Upload exception:', e);
+      fallidos.push(file.name);
     }
-    const { data: urlData } = sb.storage.from('remito-fotos').getPublicUrl(path);
-    await sb.from('remito_fotos').insert({ remito_id: remito.id, storage_url: urlData.publicUrl });
   }
 
   if (fallidos.length) {

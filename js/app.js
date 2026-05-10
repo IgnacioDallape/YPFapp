@@ -2,8 +2,8 @@
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
 // =====================================================
-const SUPABASE_URL     = 'https://tu-proyecto.supabase.co'; // reemplazar
-const SUPABASE_ANON_KEY = 'tu-anon-key';                   // reemplazar
+const SUPABASE_URL      = 'https://eqenqgrqvjithlayrezv.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxZW5xZ3JxdmppdGhsYXlyZXp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MDE2NTUsImV4cCI6MjA5MjQ3NzY1NX0.wkx8mAF0YndymIAfHfroncI0C8ql2rp8UweUPL1evg4';
 const ADMIN_PASSWORD   = 'ypf2024'; // cambiar por contraseña segura
 
 const SUPABASE_CONFIGURED = !SUPABASE_URL.includes('tu-proyecto');

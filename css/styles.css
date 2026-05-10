@@ -392,8 +392,10 @@ input[type="month"].inp { cursor: pointer; }
 .hidden { display: none !important; }
 
 /* ── Responsive ── */
-@media (max-width: 380px) {
+@media (max-width: 520px) {
   .form-row-2 { grid-template-columns: 1fr; }
+}
+@media (max-width: 380px) {
   .stats-row .stat-val { font-size: 1.15rem; }
   .stats-row .stat-lbl { font-size: 0.62rem; }
 }

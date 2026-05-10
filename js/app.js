@@ -217,6 +217,7 @@ function renderChofer() {
     <div class="screen screen-chofer">
       <header class="app-header">
         <span class="header-name">Hola, ${S.nombre} 👋</span>
+        <button id="btn-logout" class="btn-logout" title="Cerrar sesión">↩ Salir</button>
       </header>
       <main class="chofer-main">
 
@@ -280,6 +281,7 @@ function renderChofer() {
 
   bindChoferForm();
   loadMisRemitos();
+  $('btn-logout').addEventListener('click', logout);
 }
 
 function bindChoferForm() {
@@ -402,6 +404,13 @@ async function loadMisRemitos() {
   `).join('');
 }
 
+function logout() {
+  if (!confirm('¿Cerrar sesión?')) return;
+  ['ypf_chofer_id','ypf_nombre','ypf_is_admin'].forEach(k => localStorage.removeItem(k));
+  S.choferId = null; S.nombre = null; S.isAdmin = false;
+  renderWelcome();
+}
+
 // =====================================================
 // ADMIN
 // =====================================================
@@ -410,7 +419,10 @@ async function renderAdmin() {
     <div class="screen screen-admin">
       <header class="app-header">
         <span class="header-name">Panel Admin</span>
-        <span class="admin-badge">ADMIN</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="admin-badge">ADMIN</span>
+          <button id="btn-logout-admin" class="btn-logout" title="Cerrar sesión">↩ Salir</button>
+        </div>
       </header>
       <div class="tab-bar">
         <button class="tab-btn ${S.adminTab === 'pendientes' ? 'active' : ''}" data-tab="pendientes">
@@ -432,6 +444,8 @@ async function renderAdmin() {
       <button class="lb-nav lb-next" id="lb-next">›</button>
     </div>
   `;
+
+  $('btn-logout-admin').addEventListener('click', logout);
 
   document.querySelectorAll('.tab-btn').forEach(b => {
     b.addEventListener('click', () => {

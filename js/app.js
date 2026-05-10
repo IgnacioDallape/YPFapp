@@ -405,10 +405,32 @@ async function loadMisRemitos() {
 }
 
 function logout() {
-  if (!confirm('¿Cerrar sesión?')) return;
-  ['ypf_chofer_id','ypf_nombre','ypf_is_admin'].forEach(k => localStorage.removeItem(k));
-  S.choferId = null; S.nombre = null; S.isAdmin = false;
-  renderWelcome();
+  showConfirm('¿Cerrar sesión?', 'Vas a volver a la pantalla de inicio.', 'Salir', () => {
+    ['ypf_chofer_id','ypf_nombre','ypf_is_admin'].forEach(k => localStorage.removeItem(k));
+    S.choferId = null; S.nombre = null; S.isAdmin = false;
+    renderWelcome();
+  });
+}
+
+function showConfirm(titulo, subtitulo, btnLabel, onConfirm) {
+  const el = document.createElement('div');
+  el.className = 'confirm-overlay';
+  el.innerHTML = `
+    <div class="confirm-box">
+      <div class="confirm-title">${titulo}</div>
+      ${subtitulo ? `<div class="confirm-sub">${subtitulo}</div>` : ''}
+      <div class="confirm-btns">
+        <button class="btn btn-ghost" id="conf-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="conf-ok">${btnLabel}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const close = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); };
+  el.querySelector('#conf-cancel').addEventListener('click', close);
+  el.querySelector('#conf-ok').addEventListener('click', () => { close(); onConfirm(); });
+  el.addEventListener('click', e => { if (e.target === el) close(); });
 }
 
 // =====================================================
@@ -595,12 +617,13 @@ function renderRemitoCard(r) {
   `;
 }
 
-async function marcarPagado(id) {
-  if (!confirm('¿Marcar este remito como pagado?')) return;
-  const { error } = await sb.from('remitos').update({ pagado: true, fecha_pago: today() }).eq('id', id);
-  if (error) { toast('Error al actualizar', 'err'); return; }
-  toast('Remito marcado como pagado ✓');
-  loadAdminContent();
+function marcarPagado(id) {
+  showConfirm('¿Marcar como pagado?', 'Esta acción quedará registrada con la fecha de hoy.', 'Confirmar', async () => {
+    const { error } = await sb.from('remitos').update({ pagado: true, fecha_pago: today() }).eq('id', id);
+    if (error) { toast('Error al actualizar', 'err'); return; }
+    toast('Remito marcado como pagado ✓');
+    loadAdminContent();
+  });
 }
 
 // =====================================================

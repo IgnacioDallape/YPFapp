@@ -354,6 +354,31 @@ input[type="month"].inp { cursor: pointer; }
 .toast.toast-err  { background: var(--danger); }
 .toast.toast-warn { background: var(--warn); }
 
+/* ── Confirm modal ── */
+.confirm-overlay {
+  position: fixed; inset: 0; z-index: 150;
+  background: rgba(25,15,5,0); backdrop-filter: blur(0px);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.22s;
+}
+.confirm-overlay.show {
+  background: rgba(25,15,5,0.45); backdrop-filter: blur(3px);
+}
+.confirm-box {
+  background: var(--color2); border: 1.5px solid var(--color3);
+  border-radius: var(--radius); padding: 24px 22px;
+  box-shadow: 0 8px 40px rgba(58,46,30,0.18);
+  width: 88%; max-width: 340px;
+  transform: translateY(12px) scale(0.97); opacity: 0;
+  transition: all 0.22s;
+}
+.confirm-overlay.show .confirm-box {
+  transform: translateY(0) scale(1); opacity: 1;
+}
+.confirm-title { font-size: 1.05rem; font-weight: 700; color: var(--text-dark); margin-bottom: 6px; }
+.confirm-sub   { font-size: 0.86rem; color: var(--text-mid); margin-bottom: 20px; }
+.confirm-btns  { display: flex; gap: 10px; justify-content: flex-end; }
+
 /* ── Config banner ── */
 .config-banner {
   background: #fff3cd; border: 1px solid #ffc107;

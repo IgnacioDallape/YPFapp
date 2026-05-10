@@ -1,5 +1,5 @@
 // RemitosApp — Service Worker
-const CACHE = 'remitosapp-v6';
+const CACHE = 'remitosapp-v7';
 const STATIC = [
   '/',
   '/index.html',
@@ -26,22 +26,19 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Fetch: network-first para Supabase, cache-first para estáticos
+// Fetch: solo cachear assets estáticos propios, dejar pasar TODO lo demás sin tocar
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Supabase y externos → siempre red
-  if (url.hostname.includes('supabase.co') || url.hostname.includes('googleapis.com') || url.hostname.includes('jsdelivr.net')) {
-    e.respondWith(fetch(e.request).catch(() => new Response('', { status: 503 })));
-    return;
-  }
+  // Requests externos (Supabase, fonts, CDN) o no-GET → el navegador los maneja directamente
+  if (url.origin !== self.location.origin || e.request.method !== 'GET') return;
 
-  // Estáticos → cache-first, red como fallback
+  // Solo assets propios GET → cache-first
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
       return fetch(e.request).then(res => {
-        if (res && res.status === 200 && e.request.method === 'GET') {
+        if (res && res.status === 200) {
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));
         }

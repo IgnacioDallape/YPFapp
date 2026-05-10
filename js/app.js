@@ -15,11 +15,11 @@ const sb = SUPABASE_CONFIGURED
 // STATE
 // =====================================================
 const S = {
-  deviceId: (() => {
+  get deviceId() {
     let id = localStorage.getItem('ypf_device_id');
     if (!id) { id = crypto.randomUUID(); localStorage.setItem('ypf_device_id', id); }
     return id;
-  })(),
+  },
   choferId:  localStorage.getItem('ypf_chofer_id'),
   nombre:    localStorage.getItem('ypf_nombre'),
   isAdmin:   localStorage.getItem('ypf_is_admin') === 'true',
@@ -406,7 +406,7 @@ async function loadMisRemitos() {
 
 function logout() {
   showConfirm('¿Cerrar sesión?', 'Vas a volver a la pantalla de inicio.', 'Salir', () => {
-    ['ypf_chofer_id','ypf_nombre','ypf_is_admin'].forEach(k => localStorage.removeItem(k));
+    ['ypf_chofer_id','ypf_nombre','ypf_is_admin','ypf_device_id'].forEach(k => localStorage.removeItem(k));
     S.choferId = null; S.nombre = null; S.isAdmin = false;
     renderWelcome();
   });

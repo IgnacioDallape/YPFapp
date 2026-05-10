@@ -140,7 +140,7 @@ async function handleNombreSubmit(nombre) {
   if (!SUPABASE_CONFIGURED) { toast('Configurá Supabase primero', 'err'); return; }
   setLoading('Buscando...');
   const { data } = await sb.from('choferes')
-    .select('*').ilike('nombre', nombre).eq('is_admin', false).maybeSingle();
+    .select('*').ilike('nombre', nombre).maybeSingle();
   if (data) {
     renderPinStep(nombre, data, false); // usuario existente → verificar PIN
   } else {
@@ -200,20 +200,19 @@ async function crearChofer(nombre, pin) {
 
 async function verificarPin(chofer, pin) {
   if (chofer.pin !== pin) { toast('PIN incorrecto', 'err'); renderPinStep(chofer.nombre, chofer, false); return; }
-  // Actualizar device_id al dispositivo actual
   await sb.from('choferes').update({ device_id: S.deviceId }).eq('id', chofer.id);
   guardarSesionChofer(chofer);
-  toast(`Bienvenido de nuevo, ${chofer.nombre}!`);
-  renderChofer();
+  toast(`Bienvenido, ${chofer.nombre}!`);
+  if (chofer.is_admin) renderAdmin(); else renderChofer();
 }
 
 function guardarSesionChofer(chofer) {
   S.choferId = chofer.id;
   S.nombre   = chofer.nombre;
-  S.isAdmin  = false;
+  S.isAdmin  = chofer.is_admin;
   localStorage.setItem('ypf_chofer_id', chofer.id);
   localStorage.setItem('ypf_nombre',    chofer.nombre);
-  localStorage.setItem('ypf_is_admin',  'false');
+  localStorage.setItem('ypf_is_admin',  String(chofer.is_admin));
 }
 
 async function adminLoginSuccess(nombre) {

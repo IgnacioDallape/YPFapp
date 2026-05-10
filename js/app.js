@@ -145,6 +145,10 @@ function renderWelcome() {
 }
 
 async function registrarChofer(nombre) {
+  if (!SUPABASE_CONFIGURED) {
+    toast('Configurá las credenciales de Supabase en js/app.js primero', 'err');
+    return;
+  }
   const btn = $('btn-confirmar');
   btn.disabled = true;
   btn.textContent = 'Guardando...';
@@ -173,6 +177,10 @@ async function registrarChofer(nombre) {
 }
 
 async function adminLoginSuccess(nombre) {
+  if (!SUPABASE_CONFIGURED) {
+    toast('Configurá las credenciales de Supabase en js/app.js primero', 'err');
+    return;
+  }
   setLoading('Accediendo...');
 
   let { data } = await sb.from('choferes').select('*').eq('device_id', S.deviceId).maybeSingle();

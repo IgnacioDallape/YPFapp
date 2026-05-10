@@ -103,9 +103,9 @@ function renderWelcome() {
       <div class="card welcome-card">
         <div class="field">
           <label class="field-label">Tu nombre</label>
-          <input type="text" id="inp-nombre" class="inp" placeholder="Ej: Juan Pérez" maxlength="60" autocomplete="off">
+          <input type="text" id="inp-nombre" class="inp" placeholder="Ej: Mauricio" maxlength="60" autocomplete="off">
         </div>
-        <button id="btn-confirmar" class="btn btn-primary btn-full" disabled>Continuar</button>
+        <button id="btn-continuar" class="btn btn-primary btn-full" disabled>Continuar →</button>
         <div class="divider"></div>
         <button id="btn-admin-toggle" class="link-btn">Soy administrador</button>
         <div id="admin-form" class="hidden mt">
@@ -120,60 +120,100 @@ function renderWelcome() {
   `;
 
   const inpNombre = $('inp-nombre');
-  const btnOk     = $('btn-confirmar');
+  const btnOk     = $('btn-continuar');
 
-  inpNombre.addEventListener('input', () => {
-    btnOk.disabled = inpNombre.value.trim().length < 2;
-  });
-  inpNombre.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !btnOk.disabled) registrarChofer(inpNombre.value.trim());
-  });
-  btnOk.addEventListener('click', () => registrarChofer(inpNombre.value.trim()));
+  inpNombre.addEventListener('input', () => { btnOk.disabled = inpNombre.value.trim().length < 2; });
+  inpNombre.addEventListener('keydown', e => { if (e.key === 'Enter' && !btnOk.disabled) handleNombreSubmit(inpNombre.value.trim()); });
+  btnOk.addEventListener('click', () => handleNombreSubmit(inpNombre.value.trim()));
 
-  $('btn-admin-toggle').addEventListener('click', () => {
-    $('admin-form').classList.toggle('hidden');
-  });
-
+  $('btn-admin-toggle').addEventListener('click', () => $('admin-form').classList.toggle('hidden'));
   $('btn-admin-login').addEventListener('click', () => {
     if ($('inp-admin-pass').value === ADMIN_PASSWORD) {
-      const nombre = inpNombre.value.trim() || 'Admin';
-      adminLoginSuccess(nombre);
+      adminLoginSuccess(inpNombre.value.trim() || 'Admin');
     } else {
       toast('Contraseña incorrecta', 'err');
     }
   });
 }
 
-async function registrarChofer(nombre) {
-  if (!SUPABASE_CONFIGURED) {
-    toast('Configurá las credenciales de Supabase en js/app.js primero', 'err');
-    return;
+async function handleNombreSubmit(nombre) {
+  if (!SUPABASE_CONFIGURED) { toast('Configurá Supabase primero', 'err'); return; }
+  setLoading('Buscando...');
+  const { data } = await sb.from('choferes')
+    .select('*').ilike('nombre', nombre).eq('is_admin', false).maybeSingle();
+  if (data) {
+    renderPinStep(nombre, data, false); // usuario existente → verificar PIN
+  } else {
+    renderPinStep(nombre, null, true);  // usuario nuevo → crear PIN
   }
-  const btn = $('btn-confirmar');
-  btn.disabled = true;
-  btn.textContent = 'Guardando...';
+}
 
-  const { data, error } = await sb
-    .from('choferes')
-    .insert({ nombre, device_id: S.deviceId, is_admin: false })
+function renderPinStep(nombre, chofer, isNew) {
+  app().innerHTML = `
+    <div class="screen screen-welcome">
+      <div class="welcome-logo">🚛</div>
+      <h1 class="welcome-title">${isNew ? `Hola, ${nombre}!` : `Bienvenido, ${nombre}!`}</h1>
+      <p class="welcome-sub">${isNew ? 'Primera vez aquí. Creá tu PIN de 4 dígitos.' : 'Ingresá tu PIN para entrar.'}</p>
+      <div class="card welcome-card">
+        <div class="field">
+          <label class="field-label">${isNew ? 'Crear PIN' : 'Tu PIN'}</label>
+          <input type="password" id="inp-pin" class="inp inp-pin"
+            placeholder="• • • •" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+        </div>
+        <button id="btn-pin-ok" class="btn btn-primary btn-full" disabled>
+          ${isNew ? 'Crear cuenta' : 'Entrar'}
+        </button>
+        <button id="btn-pin-back" class="link-btn mt-sm">← Volver</button>
+      </div>
+    </div>
+  `;
+
+  const pinInp = $('inp-pin');
+  const btnOk  = $('btn-pin-ok');
+
+  pinInp.addEventListener('input', () => {
+    pinInp.value = pinInp.value.replace(/\D/g, '').slice(0, 4);
+    btnOk.disabled = pinInp.value.length !== 4;
+  });
+  pinInp.addEventListener('keydown', e => { if (e.key === 'Enter' && !btnOk.disabled) btnOk.click(); });
+  setTimeout(() => pinInp.focus(), 100);
+
+  btnOk.addEventListener('click', async () => {
+    const pin = pinInp.value;
+    btnOk.disabled = true; btnOk.textContent = '...';
+    if (isNew) await crearChofer(nombre, pin);
+    else        await verificarPin(chofer, pin);
+  });
+
+  $('btn-pin-back').addEventListener('click', renderWelcome);
+}
+
+async function crearChofer(nombre, pin) {
+  const { data, error } = await sb.from('choferes')
+    .insert({ nombre, device_id: S.deviceId, is_admin: false, pin })
     .select().single();
-
-  if (error) {
-    toast('Error al guardar. Intentá de nuevo.', 'err');
-    btn.disabled = false;
-    btn.textContent = 'Continuar';
-    return;
-  }
-
-  S.choferId = data.id;
-  S.nombre   = nombre;
-  S.isAdmin  = false;
-  localStorage.setItem('ypf_chofer_id', data.id);
-  localStorage.setItem('ypf_nombre',    nombre);
-  localStorage.setItem('ypf_is_admin',  'false');
-
+  if (error) { toast('Error al crear la cuenta. Intentá de nuevo.', 'err'); renderPinStep(nombre, null, true); return; }
+  guardarSesionChofer(data);
   toast(`Bienvenido, ${nombre}!`);
   renderChofer();
+}
+
+async function verificarPin(chofer, pin) {
+  if (chofer.pin !== pin) { toast('PIN incorrecto', 'err'); renderPinStep(chofer.nombre, chofer, false); return; }
+  // Actualizar device_id al dispositivo actual
+  await sb.from('choferes').update({ device_id: S.deviceId }).eq('id', chofer.id);
+  guardarSesionChofer(chofer);
+  toast(`Bienvenido de nuevo, ${chofer.nombre}!`);
+  renderChofer();
+}
+
+function guardarSesionChofer(chofer) {
+  S.choferId = chofer.id;
+  S.nombre   = chofer.nombre;
+  S.isAdmin  = false;
+  localStorage.setItem('ypf_chofer_id', chofer.id);
+  localStorage.setItem('ypf_nombre',    chofer.nombre);
+  localStorage.setItem('ypf_is_admin',  'false');
 }
 
 async function adminLoginSuccess(nombre) {

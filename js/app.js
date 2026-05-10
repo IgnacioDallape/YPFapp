@@ -380,12 +380,37 @@ function compressImage(file, maxPx = 1400) {
       }
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas toBlob failed')), 'image/jpeg', 0.85);
+      try {
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('toBlob null')), 'image/jpeg', 0.82);
+      } catch(e) { reject(e); }
     };
-    img.onerror = reject;
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('img load failed')); };
     img.src = url;
   });
+}
+
+async function uploadFoto(file, path) {
+  // Intentar comprimir; si falla, usar archivo original
+  let blob;
+  let contentType = 'image/jpeg';
+  try {
+    blob = await compressImage(file);
+  } catch(e) {
+    console.warn('Compresión falló, usando archivo original:', e.message);
+    blob = file;
+    contentType = file.type || 'image/jpeg';
+  }
+
+  const { error } = await sb.storage.from('remito-fotos').upload(path, blob, {
+    upsert: true,
+    contentType,
+  });
+
+  if (error) throw error;
+
+  const { data: urlData } = sb.storage.from('remito-fotos').getPublicUrl(path);
+  return urlData.publicUrl;
 }
 
 async function submitRemito() {
@@ -407,7 +432,8 @@ async function submitRemito() {
     .select().single();
 
   if (rErr) {
-    toast('Error al enviar el remito', 'err');
+    console.error('Remito insert error:', rErr);
+    toast(`Error al enviar: ${rErr.message}`, 'err');
     btn.disabled = false;
     btn.textContent = '📤 Enviar remito';
     return;
@@ -415,29 +441,27 @@ async function submitRemito() {
 
   // 2. Subir fotos a Supabase Storage
   const fallidos = [];
-  for (const file of S.fotosStaged) {
+  let subidas = 0;
+  for (let i = 0; i < S.fotosStaged.length; i++) {
+    const file = S.fotosStaged[i];
+    btn.textContent = `⏳ Subiendo foto ${i + 1}/${S.fotosStaged.length}...`;
     try {
-      const blob = await compressImage(file);
-      const path = `${S.choferId}/${remito.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-      const { error: upErr } = await sb.storage.from('remito-fotos').upload(path, blob, {
-        upsert: true,
-        contentType: 'image/jpeg',
-      });
-      if (upErr) {
-        console.error('Upload error:', upErr.message, upErr);
-        fallidos.push(file.name);
-        continue;
-      }
-      const { data: urlData } = sb.storage.from('remito-fotos').getPublicUrl(path);
-      await sb.from('remito_fotos').insert({ remito_id: remito.id, storage_url: urlData.publicUrl });
+      const ext  = (file.type === 'image/png') ? 'png' : 'jpg';
+      const path = `${S.choferId}/${remito.id}/${Date.now()}_${i}.${ext}`;
+      const publicUrl = await uploadFoto(file, path);
+      await sb.from('remito_fotos').insert({ remito_id: remito.id, storage_url: publicUrl });
+      subidas++;
     } catch (e) {
-      console.error('Upload exception:', e);
-      fallidos.push(file.name);
+      console.error(`Error foto ${i + 1}:`, e);
+      fallidos.push(e.message || file.name);
     }
   }
 
-  if (fallidos.length) {
-    toast(`Fotos no subidas: ${fallidos.join(' | ')}`, 'warn');
+  if (fallidos.length === S.fotosStaged.length && S.fotosStaged.length > 0) {
+    // Todas fallaron
+    toast(`Error al subir fotos: ${fallidos[0]}`, 'err');
+  } else if (fallidos.length > 0) {
+    toast(`Remito enviado. ${fallidos.length} foto(s) fallaron`, 'warn');
   } else {
     toast('Remito enviado correctamente ✓');
   }

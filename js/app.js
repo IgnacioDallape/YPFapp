@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v15 · 2026-05-11';
+const APP_VERSION = 'v16 · 2026-05-11';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -843,13 +843,35 @@ function renderConsumoSeparator(newer, older) {
   if (distance <= 0) return '';
   if (!newer.litros || newer.litros <= 0) return '';
   const l100 = (newer.litros / distance) * 100;
+
+  const iconRoute = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21L8 3"/><path d="M21 21L16 3"/><path d="M12 5v2"/><path d="M12 11v2"/><path d="M12 17v2"/></svg>`;
+  const iconFuel  = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M3 22h14"/><path d="M4 13h12"/><path d="M16 8h1a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg>`;
+  const iconGauge = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/><circle cx="12" cy="14" r="1.2" fill="currentColor"/></svg>`;
+
   return `
     <div class="consumo-separator">
-      <div class="consumo-label">VIAJE ${fmt(older.fecha_carga)} → ${fmt(newer.fecha_carga)}</div>
-      <div class="consumo-stats">
-        <span class="consumo-stat">🛣 <b>${distance.toLocaleString('es-AR')}</b> km</span>
-        <span class="consumo-stat">⛽ <b>${newer.litros}</b> L</span>
-        <span class="consumo-stat consumo-highlight">📊 <b>${l100.toFixed(1)}</b> L/100km</span>
+      <div class="consumo-header">
+        <span class="consumo-pill">VIAJE</span>
+        <span class="consumo-dates">${fmt(older.fecha_carga)} <span class="consumo-arrow">→</span> ${fmt(newer.fecha_carga)}</span>
+      </div>
+      <div class="consumo-grid">
+        <div class="consumo-cell">
+          <div class="consumo-svg-wrap">${iconRoute}</div>
+          <div class="consumo-value">${distance.toLocaleString('es-AR')}<span class="consumo-unit">km</span></div>
+          <div class="consumo-sublabel">Distancia</div>
+        </div>
+        <div class="consumo-vdiv"></div>
+        <div class="consumo-cell">
+          <div class="consumo-svg-wrap">${iconFuel}</div>
+          <div class="consumo-value">${newer.litros}<span class="consumo-unit">L</span></div>
+          <div class="consumo-sublabel">Cargados</div>
+        </div>
+        <div class="consumo-vdiv"></div>
+        <div class="consumo-cell consumo-cell-hl">
+          <div class="consumo-svg-wrap">${iconGauge}</div>
+          <div class="consumo-value">${l100.toFixed(1)}<span class="consumo-unit">L/100km</span></div>
+          <div class="consumo-sublabel">Rendimiento</div>
+        </div>
       </div>
     </div>
   `;

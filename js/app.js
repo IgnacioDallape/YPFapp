@@ -225,11 +225,21 @@ async function adminLoginSuccess(nombre) {
   let { data } = await sb.from('choferes').select('*').eq('device_id', S.deviceId).maybeSingle();
 
   if (!data) {
-    const res = await sb
-      .from('choferes')
-      .insert({ nombre, device_id: S.deviceId, is_admin: true })
-      .select().single();
-    data = res.data;
+    // No device match — check if an admin record already exists to avoid duplicates
+    const { data: existingAdmin } = await sb
+      .from('choferes').select('*').eq('is_admin', true).limit(1).maybeSingle();
+    if (existingAdmin) {
+      // Re-link existing admin to this device
+      await sb.from('choferes').update({ device_id: S.deviceId }).eq('id', existingAdmin.id);
+      data = { ...existingAdmin, device_id: S.deviceId };
+    } else {
+      // No admin exists yet — create one
+      const res = await sb
+        .from('choferes')
+        .insert({ nombre, device_id: S.deviceId, is_admin: true })
+        .select().single();
+      data = res.data;
+    }
   } else if (!data.is_admin) {
     await sb.from('choferes').update({ is_admin: true }).eq('id', data.id);
     data.is_admin = true;
@@ -328,6 +338,7 @@ function renderChofer() {
 
 function bindChoferForm() {
   const btnEnviar = $('btn-enviar');
+  let _prevObjUrls = []; // track active object URLs so we can revoke them on re-render
 
   const checkValid = () => {
     const fecha = $('f-fecha').value;
@@ -348,10 +359,14 @@ function bindChoferForm() {
   $('f-fotos-gal').addEventListener('change', function() { addFotos(this); });
 
   function renderFotoPreviews() {
+    // Revoke previous object URLs to free memory (important on mobile)
+    _prevObjUrls.forEach(u => URL.revokeObjectURL(u));
+    _prevObjUrls = S.fotosStaged.map(f => URL.createObjectURL(f));
+
     const prev = $('foto-previews');
-    prev.innerHTML = S.fotosStaged.map((f, i) => `
+    prev.innerHTML = _prevObjUrls.map((url, i) => `
       <div class="foto-preview-item">
-        <img src="${URL.createObjectURL(f)}" alt="preview">
+        <img src="${url}" alt="preview">
         <button class="foto-remove" data-idx="${i}">✕</button>
       </div>
     `).join('');
@@ -458,8 +473,8 @@ async function submitRemito() {
   }
 
   if (fallidos.length === S.fotosStaged.length && S.fotosStaged.length > 0) {
-    // Todas fallaron
-    toast(`Error al subir fotos: ${fallidos[0]}`, 'err');
+    // Todas fallaron — el remito YA fue guardado en la base de datos, solo faltan las fotos
+    toast(`Remito guardado sin fotos. Error: ${fallidos[0]}`, 'warn');
   } else if (fallidos.length > 0) {
     toast(`Remito enviado. ${fallidos.length} foto(s) fallaron`, 'warn');
   } else {
@@ -473,7 +488,7 @@ async function loadMisRemitos() {
   const el = $('mis-remitos-list');
   if (!el) return;
 
-  const { data } = await sb
+  const { data, error } = await sb
     .from('remitos')
     .select('*, remito_fotos(id)')
     .eq('chofer_id', S.choferId)
@@ -481,6 +496,11 @@ async function loadMisRemitos() {
     .limit(5);
 
   if (!el) return;
+
+  if (error) {
+    el.innerHTML = `<p class="empty-msg">Error al cargar remitos. Verificá tu conexión.</p>`;
+    return;
+  }
 
   if (!data || data.length === 0) {
     el.innerHTML = `<p class="empty-msg">Todavía no cargaste ningún remito</p>`;
@@ -605,10 +625,15 @@ async function loadAdminContent() {
     query = query.gte('fecha_carga', from).lte('fecha_carga', to);
   }
 
-  const [{ data: remitos }, { data: choferes }] = await Promise.all([
+  const [{ data: remitos, error: rErr }, { data: choferes }] = await Promise.all([
     query,
     sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre'),
   ]);
+
+  if (rErr) {
+    main.innerHTML = `<p class="empty-msg">Error al cargar remitos. Verificá tu conexión.</p>`;
+    return;
+  }
 
   let html = '';
 
@@ -729,6 +754,8 @@ function marcarPagado(id) {
 // =====================================================
 // LIGHTBOX
 // =====================================================
+let _lightboxKeyHandler = null; // prevents duplicate keydown listeners across renderAdmin() calls
+
 function bindLightbox() {
   $('lb-close')?.addEventListener('click', closeLightbox);
   $('lb-backdrop')?.addEventListener('click', closeLightbox);
@@ -740,12 +767,15 @@ function bindLightbox() {
     S.lightboxIdx = (S.lightboxIdx + 1) % S.lightboxUrls.length;
     updateLightboxImg();
   });
-  document.addEventListener('keydown', e => {
+  // Remove previous handler before adding a new one to avoid accumulating listeners
+  if (_lightboxKeyHandler) document.removeEventListener('keydown', _lightboxKeyHandler);
+  _lightboxKeyHandler = e => {
     if ($('lightbox')?.classList.contains('hidden')) return;
     if (e.key === 'Escape')     closeLightbox();
     if (e.key === 'ArrowLeft')  { S.lightboxIdx = (S.lightboxIdx - 1 + S.lightboxUrls.length) % S.lightboxUrls.length; updateLightboxImg(); }
     if (e.key === 'ArrowRight') { S.lightboxIdx = (S.lightboxIdx + 1) % S.lightboxUrls.length; updateLightboxImg(); }
-  });
+  };
+  document.addEventListener('keydown', _lightboxKeyHandler);
 }
 
 function openLightbox(urls, idx) {

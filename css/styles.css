@@ -362,7 +362,7 @@ input[type="month"].inp { cursor: pointer; }
   background: var(--text-dark); color: white;
   padding: 12px 22px; border-radius: var(--radius);
   font-size: 0.9rem; font-weight: 500; z-index: 200;
-  opacity: 0; transition: all 0.28s; white-space: nowrap;
+  opacity: 0; transition: all 0.28s; white-space: normal;
   max-width: 88vw; pointer-events: none; text-align: center;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

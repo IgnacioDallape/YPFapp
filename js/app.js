@@ -398,14 +398,14 @@ async function uploadFoto(file, path) {
     contentType = file.type || 'image/jpeg';
   }
 
-  const { error } = await sb.storage.from('remito-fotos').upload(path, blob, {
+  const { error } = await sb.storage.from('remitos-fotos').upload(path, blob, {
     upsert: true,
     contentType,
   });
 
   if (error) throw error;
 
-  const { data: urlData } = sb.storage.from('remito-fotos').getPublicUrl(path);
+  const { data: urlData } = sb.storage.from('remitos-fotos').getPublicUrl(path);
   return urlData.publicUrl;
 }
 

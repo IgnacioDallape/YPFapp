@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v19 · 2026-05-11';
+const APP_VERSION = 'v20 · 2026-05-11';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -274,6 +274,11 @@ function renderChofer() {
           </div>
 
           <div class="field">
+            <label class="field-label">N° de remito *</label>
+            <input type="text" id="f-numero" class="inp" placeholder="Ej: 0001-00012345" maxlength="40" autocomplete="off">
+          </div>
+
+          <div class="field">
             <label class="field-label">Kilómetros del camión *</label>
             <input type="number" id="f-km" class="inp" placeholder="Ej: 245789" step="1" min="0">
           </div>
@@ -346,14 +351,16 @@ function bindChoferForm() {
 
   const checkValid = () => {
     const fecha  = $('f-fecha').value;
+    const numero = $('f-numero').value.trim();
     const litros = parseFloat($('f-litros').value);
     const km     = parseFloat($('f-km').value);
     const ida    = $('f-destino-ida').value.trim();
     const vuelta = $('f-destino-vuelta').value.trim();
-    btnEnviar.disabled = !(fecha && litros > 0 && km > 0 && ida && vuelta && S.fotoKm && S.fotosStaged.length > 0);
+    btnEnviar.disabled = !(fecha && numero && litros > 0 && km > 0 && ida && vuelta && S.fotoKm && S.fotosStaged.length > 0);
   };
 
   $('f-fecha').addEventListener('change', checkValid);
+  $('f-numero').addEventListener('input', checkValid);
   $('f-litros').addEventListener('input', checkValid);
   $('f-km').addEventListener('input', checkValid);
   $('f-destino-ida').addEventListener('input', checkValid);
@@ -470,6 +477,7 @@ async function submitRemito() {
   btn.textContent = '⏳ Enviando...';
 
   const fecha          = $('f-fecha').value;
+  const numero         = $('f-numero').value.trim();
   const destinoIda     = $('f-destino-ida').value.trim();
   const destinoVuelta  = $('f-destino-vuelta').value.trim();
   const litros         = parseFloat($('f-litros').value);
@@ -477,7 +485,7 @@ async function submitRemito() {
   const comentarios    = $('f-comentarios').value.trim() || null;
 
   // Doble validación por si el botón se habilitó indebidamente
-  if (!fecha || !destinoIda || !destinoVuelta || !(litros > 0) || !(km > 0) || !S.fotoKm) {
+  if (!fecha || !numero || !destinoIda || !destinoVuelta || !(litros > 0) || !(km > 0) || !S.fotoKm) {
     toast('Completá todos los campos antes de enviar', 'err');
     $('btn-enviar').disabled = false;
     $('btn-enviar').textContent = '📤 Enviar remito';
@@ -487,7 +495,7 @@ async function submitRemito() {
   // 1. Insertar remito (sin foto_km_url aún — se completa luego)
   const { data: remito, error: rErr } = await sb
     .from('remitos')
-    .insert({ chofer_id: S.choferId, fecha_carga: fecha, destino_ida: destinoIda,
+    .insert({ chofer_id: S.choferId, fecha_carga: fecha, numero, destino_ida: destinoIda,
               destino_vuelta: destinoVuelta, litros, km, comentarios })
     .select().single();
 
@@ -790,9 +798,12 @@ async function loadAdminContent() {
   $('btn-limpiar')?.addEventListener('click', () => { S.filtroChofer = ''; S.filtroMes = ''; loadAdminContent(); });
   $('btn-eliminar-pagados')?.addEventListener('click', eliminarPagados);
 
-  // Bind "marcar pagado"
+  // Bind "marcar pagado" / "marcar pendiente"
   main.querySelectorAll('.btn-marcar-pagado').forEach(b => {
     b.addEventListener('click', () => marcarPagado(b.dataset.id));
+  });
+  main.querySelectorAll('.btn-marcar-pendiente').forEach(b => {
+    b.addEventListener('click', () => marcarPendiente(b.dataset.id));
   });
 
   // Bind foto thumbnails
@@ -847,12 +858,19 @@ function renderRemitoCard(r) {
         ${r.km != null ? `<span class="info-chip">🛣 ${r.km.toLocaleString('es-AR')} km</span>` : ''}
       </div>
       ${r.comentarios ? `<div class="remito-comentarios">💬 ${r.comentarios}</div>` : ''}
-      ${(kmThumb || thumbs) ? `<div class="fotos-row">${kmThumb}${thumbs}${masTag}</div>` : ''}
+      ${r.numero || (kmThumb || thumbs) ? `
+        <div class="fotos-section">
+          ${r.numero ? `<div class="remito-numero"><span class="remito-numero-label">N° REMITO</span><span class="remito-numero-val">${r.numero}</span></div>` : ''}
+          ${(kmThumb || thumbs) ? `<div class="fotos-row">${kmThumb}${thumbs}${masTag}</div>` : ''}
+        </div>` : ''}
       ${r.pagado && r.fecha_pago ? `<div class="fecha-pago-info">Pagado el ${fmt(r.fecha_pago)}</div>` : ''}
       ${!r.pagado ? `
         <button class="btn btn-pay btn-full mt-sm btn-marcar-pagado" data-id="${r.id}">
           Marcar como pagado
-        </button>` : ''}
+        </button>` : `
+        <button class="btn btn-ghost btn-full mt-sm btn-marcar-pendiente" data-id="${r.id}">
+          ↩ Marcar como pendiente
+        </button>`}
     </div>
   `;
 }
@@ -904,6 +922,15 @@ function marcarPagado(id) {
     const { error } = await sb.from('remitos').update({ pagado: true, fecha_pago: today() }).eq('id', id);
     if (error) { toast('Error al actualizar', 'err'); return; }
     toast('Remito marcado como pagado ✓');
+    loadAdminContent();
+  });
+}
+
+function marcarPendiente(id) {
+  showConfirm('¿Marcar como pendiente?', 'El remito vuelve al estado pendiente de pago.', 'Confirmar', async () => {
+    const { error } = await sb.from('remitos').update({ pagado: false, fecha_pago: null }).eq('id', id);
+    if (error) { toast('Error al actualizar', 'err'); return; }
+    toast('Remito marcado como pendiente ✓');
     loadAdminContent();
   });
 }

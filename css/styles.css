@@ -286,19 +286,44 @@ input[type="month"].inp { cursor: pointer; }
 }
 .destino-tag {
   background: var(--color1); border: 1px solid var(--color3);
-  padding: 4px 11px; border-radius: 20px;
-  font-size: 0.84rem; font-weight: 500;
+  padding: 5px 12px; border-radius: 20px;
+  font-size: 0.97rem; font-weight: 500;
 }
-.dest-arrow { color: var(--text-mid); }
+.dest-arrow { color: var(--text-mid); font-size: 1rem; }
 
-.remito-litros { font-size: 0.86rem; color: var(--text-mid); margin-bottom: 7px; }
+.remito-litros { font-size: 0.99rem; color: var(--text-mid); margin-bottom: 7px; }
 
-.remito-info-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.remito-info-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .info-chip {
   background: var(--color1); border: 1px solid var(--color3);
-  padding: 3px 10px; border-radius: 20px;
-  font-size: 0.82rem; color: var(--text-mid); font-weight: 500;
+  padding: 4px 11px; border-radius: 20px;
+  font-size: 0.95rem; color: var(--text-mid); font-weight: 500;
 }
+
+/* Sección de fotos con número de remito arriba */
+.fotos-section {
+  background: var(--color1);
+  border: 1px solid var(--color3);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+.remito-numero {
+  display: flex; align-items: baseline; gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--color3);
+}
+.remito-numero-label {
+  font-size: 0.66rem; font-weight: 800;
+  letter-spacing: 0.14em; color: var(--text-mid);
+}
+.remito-numero-val {
+  font-size: 1.15rem; font-weight: 800; color: var(--text-dark);
+  font-family: 'DM Sans', sans-serif;
+  letter-spacing: 0.02em;
+}
+.fotos-section .fotos-row { margin-top: 0; }
 
 /* ── Consumo separator (entre cargas consecutivas) ── */
 .consumo-separator {

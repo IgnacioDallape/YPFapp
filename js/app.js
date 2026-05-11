@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v9 · 2026-05-10';
+const APP_VERSION = 'v10 · 2026-05-10';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -647,7 +647,7 @@ async function loadAdminContent() {
     `;
   }
 
-  // Filtros (solo en tab "todos")
+  // Filtros + acción peligrosa (solo en tab "todos")
   if (S.adminTab === 'todos') {
     const opts = (choferes || [])
       .map(c => `<option value="${c.id}" ${S.filtroChofer === c.id ? 'selected' : ''}>${c.nombre}</option>`)
@@ -659,6 +659,9 @@ async function loadAdminContent() {
         </select>
         <input type="month" id="filtro-mes" class="inp inp-sm" value="${S.filtroMes}">
         <button id="btn-limpiar" class="btn btn-ghost btn-sm">Limpiar</button>
+      </div>
+      <div class="admin-actions-row">
+        <button id="btn-eliminar-pagados" class="btn btn-danger btn-sm">🗑 Eliminar pagados</button>
       </div>
     `;
   }
@@ -678,6 +681,7 @@ async function loadAdminContent() {
   if (fc) fc.addEventListener('change', () => { S.filtroChofer = fc.value; loadAdminContent(); });
   if (fm) fm.addEventListener('change', () => { S.filtroMes    = fm.value; loadAdminContent(); });
   $('btn-limpiar')?.addEventListener('click', () => { S.filtroChofer = ''; S.filtroMes = ''; loadAdminContent(); });
+  $('btn-eliminar-pagados')?.addEventListener('click', eliminarPagados);
 
   // Bind "marcar pagado"
   main.querySelectorAll('.btn-marcar-pagado').forEach(b => {
@@ -735,6 +739,38 @@ function marcarPagado(id) {
     toast('Remito marcado como pagado ✓');
     loadAdminContent();
   });
+}
+
+async function eliminarPagados() {
+  // Contar primero para mostrar en el confirm
+  const { count, error: cErr } = await sb
+    .from('remitos').select('*', { count: 'exact', head: true }).eq('pagado', true);
+  if (cErr) { toast('Error al consultar remitos pagados', 'err'); return; }
+  if (!count) { toast('No hay remitos pagados para eliminar', 'warn'); return; }
+
+  const plural = count !== 1;
+  showConfirm(
+    `¿Eliminar ${count} remito${plural ? 's' : ''} pagado${plural ? 's' : ''}?`,
+    'Esta acción no se puede deshacer. Se borran también las fotos asociadas.',
+    'Eliminar',
+    async () => {
+      // 1) Obtener IDs de los pagados
+      const { data: paid, error: pErr } = await sb.from('remitos').select('id').eq('pagado', true);
+      if (pErr) { toast(`Error: ${pErr.message}`, 'err'); return; }
+      const ids = paid.map(r => r.id);
+
+      // 2) Borrar registros de fotos (FK)
+      const { error: fErr } = await sb.from('remito_fotos').delete().in('remito_id', ids);
+      if (fErr) { toast(`Error al borrar fotos: ${fErr.message}`, 'err'); return; }
+
+      // 3) Borrar los remitos
+      const { error: rErr } = await sb.from('remitos').delete().in('id', ids);
+      if (rErr) { toast(`Error al borrar remitos: ${rErr.message}`, 'err'); return; }
+
+      toast(`${count} remito${plural ? 's' : ''} eliminado${plural ? 's' : ''} ✓`);
+      loadAdminContent();
+    }
+  );
 }
 
 // =====================================================

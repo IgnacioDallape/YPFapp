@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v14 · 2026-05-10';
+const APP_VERSION = 'v15 · 2026-05-11';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -739,11 +739,20 @@ async function loadAdminContent() {
     `;
   }
 
-  // Lista
+  // Lista (con separadores de consumo entre cargas consecutivas del mismo chofer)
   if (!remitos || remitos.length === 0) {
     html += `<p class="empty-msg">${S.adminTab === 'pendientes' ? '✓ Sin remitos pendientes de pago' : 'No hay remitos cargados'}</p>`;
   } else {
-    html += remitos.map(renderRemitoCard).join('');
+    const pieces = [];
+    for (let i = 0; i < remitos.length; i++) {
+      pieces.push(renderRemitoCard(remitos[i]));
+      if (i + 1 < remitos.length) {
+        // remitos[i] es MÁS NUEVO que remitos[i+1] (orden desc por created_at)
+        const sep = renderConsumoSeparator(remitos[i], remitos[i + 1]);
+        if (sep) pieces.push(sep);
+      }
+    }
+    html += pieces.join('');
   }
 
   main.innerHTML = html;
@@ -819,6 +828,29 @@ function renderRemitoCard(r) {
         <button class="btn btn-pay btn-full mt-sm btn-marcar-pagado" data-id="${r.id}">
           Marcar como pagado
         </button>` : ''}
+    </div>
+  `;
+}
+
+// Separador entre dos cargas consecutivas del mismo chofer.
+// newer = carga más reciente (sus litros = lo consumido en el viaje anterior, que terminó en newer.km).
+// older = carga anterior (km de partida del viaje analizado).
+function renderConsumoSeparator(newer, older) {
+  if (!newer || !older) return '';
+  if (newer.chofer_id !== older.chofer_id) return '';
+  if (newer.km == null || older.km == null) return '';
+  const distance = newer.km - older.km;
+  if (distance <= 0) return '';
+  if (!newer.litros || newer.litros <= 0) return '';
+  const l100 = (newer.litros / distance) * 100;
+  return `
+    <div class="consumo-separator">
+      <div class="consumo-label">VIAJE ${fmt(older.fecha_carga)} → ${fmt(newer.fecha_carga)}</div>
+      <div class="consumo-stats">
+        <span class="consumo-stat">🛣 <b>${distance.toLocaleString('es-AR')}</b> km</span>
+        <span class="consumo-stat">⛽ <b>${newer.litros}</b> L</span>
+        <span class="consumo-stat consumo-highlight">📊 <b>${l100.toFixed(1)}</b> L/100km</span>
+      </div>
     </div>
   `;
 }

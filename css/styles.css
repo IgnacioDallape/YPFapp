@@ -300,6 +300,34 @@ input[type="month"].inp { cursor: pointer; }
   font-size: 0.82rem; color: var(--text-mid); font-weight: 500;
 }
 
+/* ── Consumo separator (entre cargas consecutivas) ── */
+.consumo-separator {
+  background: linear-gradient(135deg, var(--color1) 0%, var(--color2) 100%);
+  border: 1.5px dashed var(--color4);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  text-align: center;
+  margin: 6px 12px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+}
+.consumo-label {
+  font-size: 0.7rem; color: var(--text-mid);
+  letter-spacing: 0.08em; font-weight: 700;
+  margin-bottom: 8px;
+}
+.consumo-stats {
+  display: flex; align-items: center; justify-content: center;
+  gap: 14px; flex-wrap: wrap;
+  font-size: 0.88rem; color: var(--text-dark);
+}
+.consumo-stat { font-size: 0.86rem; color: var(--text-mid); }
+.consumo-stat b { color: var(--text-dark); font-weight: 700; font-size: 0.98rem; }
+.consumo-highlight {
+  background: var(--color5); color: white;
+  padding: 4px 12px; border-radius: 20px;
+}
+.consumo-highlight b { color: white; }
+
 .foto-thumb-wrap { position: relative; display: inline-block; }
 .foto-km-badge {
   position: absolute; top: 3px; left: 3px;

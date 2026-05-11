@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v13 · 2026-05-10';
+const APP_VERSION = 'v14 · 2026-05-10';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -32,6 +32,7 @@ const S = {
   filtroChofer: '',
   filtroMes:    '',
   fotosStaged:  [],
+  fotoKm:       null,
   lightboxUrls: [],
   lightboxIdx:  0,
 };
@@ -249,6 +250,7 @@ async function adminLoginSuccess(nombre) {
 // =====================================================
 function renderChofer() {
   S.fotosStaged = [];
+  S.fotoKm = null;
   app().innerHTML = `
     <div class="screen screen-chofer">
       <header class="app-header">
@@ -269,6 +271,24 @@ function renderChofer() {
               <label class="field-label">Litros cargados *</label>
               <input type="number" id="f-litros" class="inp" placeholder="0.0" step="0.1" min="0">
             </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Kilómetros del camión *</label>
+            <input type="number" id="f-km" class="inp" placeholder="Ej: 245789" step="1" min="0">
+          </div>
+
+          <div class="field">
+            <label class="field-label">
+              Foto del kilómetro &nbsp;<span class="req-badge">obligatoria *</span>
+            </label>
+            <div class="foto-actions foto-actions-single">
+              <label class="foto-btn foto-btn-cam">
+                <input type="file" id="f-foto-km" accept="image/*" capture="environment" class="hidden">
+                📷 Sacar foto del km
+              </label>
+            </div>
+            <div id="foto-km-preview" class="foto-previews"></div>
           </div>
 
           <div class="field">
@@ -322,17 +342,20 @@ function renderChofer() {
 function bindChoferForm() {
   const btnEnviar = $('btn-enviar');
   let _prevObjUrls = []; // track active object URLs so we can revoke them on re-render
+  let _kmObjUrl = null;  // single object URL for the km photo preview
 
   const checkValid = () => {
     const fecha  = $('f-fecha').value;
     const litros = parseFloat($('f-litros').value);
+    const km     = parseFloat($('f-km').value);
     const ida    = $('f-destino-ida').value.trim();
     const vuelta = $('f-destino-vuelta').value.trim();
-    btnEnviar.disabled = !(fecha && litros > 0 && ida && vuelta && S.fotosStaged.length > 0);
+    btnEnviar.disabled = !(fecha && litros > 0 && km > 0 && ida && vuelta && S.fotoKm && S.fotosStaged.length > 0);
   };
 
   $('f-fecha').addEventListener('change', checkValid);
   $('f-litros').addEventListener('input', checkValid);
+  $('f-km').addEventListener('input', checkValid);
   $('f-destino-ida').addEventListener('input', checkValid);
   $('f-destino-vuelta').addEventListener('input', checkValid);
 
@@ -343,6 +366,33 @@ function bindChoferForm() {
     checkValid();
   };
   $('f-fotos-cam').addEventListener('change', function() { addFotos(this); });
+
+  const setFotoKm = input => {
+    const f = input.files[0];
+    if (f) S.fotoKm = f;
+    input.value = '';
+    renderFotoKmPreview();
+    checkValid();
+  };
+  $('f-foto-km').addEventListener('change', function() { setFotoKm(this); });
+
+  function renderFotoKmPreview() {
+    if (_kmObjUrl) URL.revokeObjectURL(_kmObjUrl);
+    _kmObjUrl = S.fotoKm ? URL.createObjectURL(S.fotoKm) : null;
+    const prev = $('foto-km-preview');
+    if (!S.fotoKm) { prev.innerHTML = ''; return; }
+    prev.innerHTML = `
+      <div class="foto-preview-item">
+        <img src="${_kmObjUrl}" alt="km preview">
+        <button class="foto-remove" id="foto-km-remove">✕</button>
+      </div>
+    `;
+    $('foto-km-remove').addEventListener('click', () => {
+      S.fotoKm = null;
+      renderFotoKmPreview();
+      checkValid();
+    });
+  }
 
   function renderFotoPreviews() {
     // Revoke previous object URLs to free memory (important on mobile)
@@ -423,21 +473,22 @@ async function submitRemito() {
   const destinoIda     = $('f-destino-ida').value.trim();
   const destinoVuelta  = $('f-destino-vuelta').value.trim();
   const litros         = parseFloat($('f-litros').value);
+  const km             = parseInt($('f-km').value, 10);
   const comentarios    = $('f-comentarios').value.trim() || null;
 
   // Doble validación por si el botón se habilitó indebidamente
-  if (!fecha || !destinoIda || !destinoVuelta || !(litros > 0)) {
+  if (!fecha || !destinoIda || !destinoVuelta || !(litros > 0) || !(km > 0) || !S.fotoKm) {
     toast('Completá todos los campos antes de enviar', 'err');
     $('btn-enviar').disabled = false;
     $('btn-enviar').textContent = '📤 Enviar remito';
     return;
   }
 
-  // 1. Insertar remito
+  // 1. Insertar remito (sin foto_km_url aún — se completa luego)
   const { data: remito, error: rErr } = await sb
     .from('remitos')
     .insert({ chofer_id: S.choferId, fecha_carga: fecha, destino_ida: destinoIda,
-              destino_vuelta: destinoVuelta, litros, comentarios })
+              destino_vuelta: destinoVuelta, litros, km, comentarios })
     .select().single();
 
   if (rErr) {
@@ -448,7 +499,20 @@ async function submitRemito() {
     return;
   }
 
-  // 2. Subir fotos a Supabase Storage
+  // 2. Subir foto del km y guardar URL en el remito
+  btn.textContent = `⏳ Subiendo foto del km...`;
+  let fotoKmFallo = null;
+  try {
+    const ext  = (S.fotoKm.type === 'image/png') ? 'png' : 'jpg';
+    const path = `${S.choferId}/${remito.id}/km_${Date.now()}.${ext}`;
+    const kmUrl = await uploadFoto(S.fotoKm, path);
+    await sb.from('remitos').update({ foto_km_url: kmUrl }).eq('id', remito.id);
+  } catch (e) {
+    console.error('Error foto km:', e);
+    fotoKmFallo = e.message;
+  }
+
+  // 3. Subir fotos del remito a Supabase Storage
   const fallidos = [];
   let subidas = 0;
   for (let i = 0; i < S.fotosStaged.length; i++) {
@@ -465,6 +529,8 @@ async function submitRemito() {
       fallidos.push(e.message || file.name);
     }
   }
+
+  if (fotoKmFallo) fallidos.push(`foto km: ${fotoKmFallo}`);
 
   if (fallidos.length === S.fotosStaged.length && S.fotosStaged.length > 0) {
     // Todas fallaron — el remito YA fue guardado en la base de datos, solo faltan las fotos
@@ -706,11 +772,26 @@ async function loadAdminContent() {
 function renderRemitoCard(r) {
   const fotos   = r.remito_fotos || [];
   const nombre  = r.choferes?.nombre || 'Desconocido';
-  const allUrls = JSON.stringify(fotos.map(f => f.storage_url)).replace(/"/g, '&quot;');
 
+  // Lightbox: foto del km primero (si existe), después las demás
+  const lightboxUrls = [];
+  if (r.foto_km_url) lightboxUrls.push(r.foto_km_url);
+  fotos.forEach(f => lightboxUrls.push(f.storage_url));
+  const allUrls = JSON.stringify(lightboxUrls).replace(/"/g, '&quot;');
+
+  // Thumbnail de la foto del km (con badge)
+  const kmThumb = r.foto_km_url
+    ? `<div class="foto-thumb-wrap foto-km-thumb">
+         <img class="foto-thumb" src="${r.foto_km_url}" alt="km" data-urls="${allUrls}" data-idx="0">
+         <span class="foto-km-badge">KM</span>
+       </div>`
+    : '';
+
+  // Thumbnails de las fotos del remito (a partir del índice 1 si hay foto km)
+  const offset  = r.foto_km_url ? 1 : 0;
   const thumbs  = fotos.slice(0, 4).map((f, i) =>
     `<img class="foto-thumb" src="${f.storage_url}" alt="foto"
-      data-urls="${allUrls}" data-idx="${i}">`
+      data-urls="${allUrls}" data-idx="${i + offset}">`
   ).join('');
   const masTag  = fotos.length > 4 ? `<div class="foto-mas">+${fotos.length - 4}</div>` : '';
 
@@ -727,9 +808,12 @@ function renderRemitoCard(r) {
         <span class="destino-tag">📍 ${r.destino_ida}</span>
         ${r.destino_vuelta ? `<span class="dest-arrow">→</span><span class="destino-tag">${r.destino_vuelta}</span>` : ''}
       </div>
-      ${r.litros  ? `<div class="remito-litros">⛽ ${r.litros}L cargados</div>` : ''}
+      <div class="remito-info-row">
+        ${r.litros ? `<span class="info-chip">⛽ ${r.litros}L</span>` : ''}
+        ${r.km != null ? `<span class="info-chip">🛣 ${r.km.toLocaleString('es-AR')} km</span>` : ''}
+      </div>
       ${r.comentarios ? `<div class="remito-comentarios">💬 ${r.comentarios}</div>` : ''}
-      ${fotos.length > 0 ? `<div class="fotos-row">${thumbs}${masTag}</div>` : ''}
+      ${(kmThumb || thumbs) ? `<div class="fotos-row">${kmThumb}${thumbs}${masTag}</div>` : ''}
       ${r.pagado && r.fecha_pago ? `<div class="fecha-pago-info">Pagado el ${fmt(r.fecha_pago)}</div>` : ''}
       ${!r.pagado ? `
         <button class="btn btn-pay btn-full mt-sm btn-marcar-pagado" data-id="${r.id}">

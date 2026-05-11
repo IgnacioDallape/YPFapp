@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v20 · 2026-05-11';
+const APP_VERSION = 'v21 · 2026-05-11';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -763,7 +763,28 @@ async function loadAdminContent() {
           </div>
           <div class="filtro-field">
             <label class="filtro-label">Mes</label>
-            <input type="month" id="filtro-mes" class="inp inp-sm filtro-input" value="${S.filtroMes}">
+            <div class="cdd" id="mdd-mes">
+              <button type="button" class="cdd-trigger">
+                <span class="cdd-text ${!S.filtroMes ? 'cdd-placeholder' : ''}">${formatMesLabel(S.filtroMes)}</span>
+                <svg class="cdd-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </button>
+              <div class="cdd-menu mdd-menu hidden">
+                <div class="mdd-year-nav">
+                  <button type="button" class="mdd-year-btn" data-dir="-1">‹</button>
+                  <span class="mdd-year">${S.filtroMes ? S.filtroMes.split('-')[0] : new Date().getFullYear()}</span>
+                  <button type="button" class="mdd-year-btn" data-dir="1">›</button>
+                </div>
+                <div class="mdd-months">
+                  ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((m,i) =>
+                    `<button type="button" class="mdd-month" data-m="${String(i+1).padStart(2,'0')}">${m}</button>`
+                  ).join('')}
+                </div>
+                <div class="mdd-actions">
+                  <button type="button" class="mdd-action mdd-clear">Limpiar</button>
+                  <button type="button" class="mdd-action mdd-today">Este mes</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -793,8 +814,7 @@ async function loadAdminContent() {
 
   // Bind filtros
   bindChoferDropdown();
-  const fm = $('filtro-mes');
-  if (fm) fm.addEventListener('change', () => { S.filtroMes = fm.value; loadAdminContent(); });
+  bindMesPicker();
   $('btn-limpiar')?.addEventListener('click', () => { S.filtroChofer = ''; S.filtroMes = ''; loadAdminContent(); });
   $('btn-eliminar-pagados')?.addEventListener('click', eliminarPagados);
 
@@ -965,6 +985,83 @@ async function eliminarPagados() {
       loadAdminContent();
     }
   );
+}
+
+// =====================================================
+// MES PICKER (filtro mes — custom)
+// =====================================================
+function formatMesLabel(value) {
+  if (!value) return 'Seleccionar mes';
+  const [y, m] = value.split('-');
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                 'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  return `${meses[parseInt(m, 10) - 1]} ${y}`;
+}
+
+function bindMesPicker() {
+  const mdd = document.getElementById('mdd-mes');
+  if (!mdd) return;
+  const trigger  = mdd.querySelector('.cdd-trigger');
+  const menu     = mdd.querySelector('.cdd-menu');
+  const yearEl   = mdd.querySelector('.mdd-year');
+  const monthBtns = mdd.querySelectorAll('.mdd-month');
+
+  // Año mostrado en el picker (puede ser distinto al seleccionado mientras navega)
+  let displayYear = S.filtroMes
+    ? parseInt(S.filtroMes.split('-')[0], 10)
+    : new Date().getFullYear();
+  const selectedYear  = S.filtroMes ? S.filtroMes.split('-')[0] : '';
+  const selectedMonth = S.filtroMes ? S.filtroMes.split('-')[1] : '';
+
+  const refresh = () => {
+    yearEl.textContent = displayYear;
+    monthBtns.forEach(b => {
+      b.classList.toggle('is-active',
+        String(displayYear) === selectedYear && b.dataset.m === selectedMonth);
+    });
+  };
+  refresh();
+
+  const onDoc = (e) => { if (!mdd.contains(e.target)) close(); };
+  const close = () => {
+    menu.classList.add('hidden');
+    trigger.classList.remove('is-open');
+    document.removeEventListener('click', onDoc);
+  };
+  const open = () => {
+    menu.classList.remove('hidden');
+    trigger.classList.add('is-open');
+    setTimeout(() => document.addEventListener('click', onDoc), 0);
+  };
+
+  trigger.addEventListener('click', () => {
+    if (menu.classList.contains('hidden')) open(); else close();
+  });
+
+  mdd.querySelectorAll('.mdd-year-btn').forEach(b => {
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      displayYear += parseInt(b.dataset.dir, 10);
+      refresh();
+    });
+  });
+
+  monthBtns.forEach(b => {
+    b.addEventListener('click', () => {
+      S.filtroMes = `${displayYear}-${b.dataset.m}`;
+      loadAdminContent();
+    });
+  });
+
+  mdd.querySelector('.mdd-clear')?.addEventListener('click', () => {
+    S.filtroMes = '';
+    loadAdminContent();
+  });
+  mdd.querySelector('.mdd-today')?.addEventListener('click', () => {
+    const t = new Date();
+    S.filtroMes = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}`;
+    loadAdminContent();
+  });
 }
 
 // =====================================================

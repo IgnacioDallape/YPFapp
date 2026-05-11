@@ -541,6 +541,60 @@ input[type="month"].inp { cursor: pointer; }
 }
 .cdd-opt.is-active:hover { background: #9e8d67; }
 
+/* Mes picker (calendario custom) */
+.mdd-menu {
+  padding: 10px;
+  min-width: 240px;
+}
+.mdd-year-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 4px 6px;
+}
+.mdd-year-btn {
+  background: var(--color1); border: 1px solid var(--color3);
+  width: 28px; height: 28px; border-radius: 50%;
+  font-size: 1.1rem; font-weight: 700; color: var(--text-dark);
+  cursor: pointer; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+  font-family: 'DM Sans', sans-serif;
+}
+.mdd-year-btn:hover { background: var(--color5); color: white; border-color: var(--color5); }
+.mdd-year {
+  font-size: 1rem; font-weight: 700; color: var(--text-dark);
+  letter-spacing: 0.02em;
+}
+.mdd-months {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+  margin-bottom: 8px;
+}
+.mdd-month {
+  background: none; border: none;
+  padding: 9px 4px; border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.82rem; font-weight: 600; color: var(--text-dark);
+  cursor: pointer; transition: all 0.12s;
+}
+.mdd-month:hover { background: var(--color1); }
+.mdd-month.is-active {
+  background: var(--color5); color: white;
+}
+.mdd-actions {
+  display: flex; justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid var(--color3);
+}
+.mdd-action {
+  background: none; border: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem; font-weight: 600;
+  color: var(--color5); cursor: pointer;
+  padding: 4px 8px; border-radius: var(--radius-sm);
+  transition: background 0.12s;
+}
+.mdd-action:hover { background: var(--color1); }
+
 /* ── Empty ── */
 .empty-msg { text-align: center; padding: 36px 16px; color: var(--text-mid); font-size: 0.95rem; }
 

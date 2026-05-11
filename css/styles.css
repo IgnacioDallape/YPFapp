@@ -404,6 +404,16 @@ input[type="month"].inp { cursor: pointer; }
 }
 .config-banner code { font-size: 0.78rem; background: rgba(0,0,0,0.08); padding: 1px 5px; border-radius: 4px; }
 
+/* ── Version tag ── */
+.version-tag {
+  margin-top: 18px; font-size: 0.72rem; color: var(--text-mid);
+  opacity: 0.65; letter-spacing: 0.04em; font-family: 'DM Sans', monospace;
+}
+.version-inline {
+  font-size: 0.68rem; color: var(--text-mid); opacity: 0.6;
+  font-weight: 400; margin-left: 4px;
+}
+
 /* ── Utils ── */
 .hidden { display: none !important; }
 

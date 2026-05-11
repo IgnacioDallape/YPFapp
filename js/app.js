@@ -1,5 +1,10 @@
 // RemitosApp — js/app.js
 // =====================================================
+// VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
+// =====================================================
+const APP_VERSION = 'v8 · 2026-05-10';
+
+// =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
 // =====================================================
 const SUPABASE_URL      = 'https://eqenqgrqvjithlayrezv.supabase.co';
@@ -121,6 +126,7 @@ function renderWelcome() {
           <button id="btn-admin-login" class="btn btn-secondary btn-full mt-sm">Entrar como admin</button>
         </div>
       </div>
+      <div class="version-tag">${APP_VERSION}</div>
     </div>
   `;
 
@@ -246,7 +252,7 @@ function renderChofer() {
   app().innerHTML = `
     <div class="screen screen-chofer">
       <header class="app-header">
-        <span class="header-name">Hola, ${S.nombre} 👋</span>
+        <span class="header-name">Hola, ${S.nombre} 👋 <span class="version-inline">${APP_VERSION}</span></span>
         <button id="btn-logout" class="btn-logout" title="Cerrar sesión">↩ Salir</button>
       </header>
       <main class="chofer-main">
@@ -540,7 +546,7 @@ async function renderAdmin() {
   app().innerHTML = `
     <div class="screen screen-admin">
       <header class="app-header">
-        <span class="header-name">Panel Admin</span>
+        <span class="header-name">Panel Admin <span class="version-inline">${APP_VERSION}</span></span>
         <div style="display:flex;gap:8px;align-items:center">
           <span class="admin-badge">ADMIN</span>
           <button id="btn-logout-admin" class="btn-logout" title="Cerrar sesión">↩ Salir</button>

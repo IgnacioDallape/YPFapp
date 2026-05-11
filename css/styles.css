@@ -119,6 +119,7 @@ body {
 .field { display: flex; flex-direction: column; gap: 5px; }
 
 .field-label { font-size: 0.82rem; font-weight: 600; color: var(--text-mid); letter-spacing: 0.02em; }
+.field-hint  { font-size: 0.76rem; color: var(--text-mid); }
 
 .inp {
   background: var(--color1); border: 1.5px solid var(--color3);

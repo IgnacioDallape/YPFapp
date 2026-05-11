@@ -105,7 +105,13 @@ function renderWelcome() {
           <label class="field-label">Tu nombre</label>
           <input type="text" id="inp-nombre" class="inp" placeholder="Ej: Mauricio" maxlength="60" autocomplete="off">
         </div>
-        <button id="btn-continuar" class="btn btn-primary btn-full" disabled>Continuar →</button>
+        <div class="field">
+          <label class="field-label">PIN (4 dígitos)</label>
+          <input type="password" id="inp-pin" class="inp inp-pin"
+            placeholder="• • • •" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+          <span class="field-hint">¿Primera vez? Tu PIN se crea acá.</span>
+        </div>
+        <button id="btn-continuar" class="btn btn-primary btn-full" disabled>Entrar →</button>
         <div class="divider"></div>
         <button id="btn-admin-toggle" class="link-btn">Soy administrador</button>
         <div id="admin-form" class="hidden mt">
@@ -120,11 +126,27 @@ function renderWelcome() {
   `;
 
   const inpNombre = $('inp-nombre');
+  const inpPin    = $('inp-pin');
   const btnOk     = $('btn-continuar');
 
-  inpNombre.addEventListener('input', () => { btnOk.disabled = inpNombre.value.trim().length < 2; });
-  inpNombre.addEventListener('keydown', e => { if (e.key === 'Enter' && !btnOk.disabled) handleNombreSubmit(inpNombre.value.trim()); });
-  btnOk.addEventListener('click', () => handleNombreSubmit(inpNombre.value.trim()));
+  const checkReady = () => {
+    btnOk.disabled = inpNombre.value.trim().length < 2 || inpPin.value.length !== 4;
+  };
+
+  inpNombre.addEventListener('input', checkReady);
+  inpPin.addEventListener('input', () => {
+    inpPin.value = inpPin.value.replace(/\D/g, '').slice(0, 4);
+    checkReady();
+  });
+
+  const submit = () => {
+    if (btnOk.disabled) return;
+    handleLogin(inpNombre.value.trim(), inpPin.value);
+  };
+
+  inpNombre.addEventListener('keydown', e => { if (e.key === 'Enter') inpPin.focus(); });
+  inpPin.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  btnOk.addEventListener('click', submit);
 
   $('btn-admin-toggle').addEventListener('click', () => $('admin-form').classList.toggle('hidden'));
   $('btn-admin-login').addEventListener('click', () => {
@@ -136,74 +158,43 @@ function renderWelcome() {
   });
 }
 
-async function handleNombreSubmit(nombre) {
+async function handleLogin(nombre, pin) {
   if (!SUPABASE_CONFIGURED) { toast('Configurá Supabase primero', 'err'); return; }
-  setLoading('Buscando...');
-  const { data } = await sb.from('choferes')
-    .select('*').ilike('nombre', nombre).maybeSingle();
-  if (data) {
-    renderPinStep(nombre, data, false); // usuario existente → verificar PIN
-  } else {
-    renderPinStep(nombre, null, true);  // usuario nuevo → crear PIN
+  setLoading('Verificando...');
+  try {
+    const { data, error } = await sb.from('choferes')
+      .select('*').ilike('nombre', nombre).maybeSingle();
+    if (error) throw error;
+
+    if (data) {
+      // Usuario existente — verificar PIN (cast a string por si Postgres lo guardó como integer)
+      if (String(data.pin) !== String(pin)) {
+        toast('PIN incorrecto', 'err');
+        renderWelcome();
+        return;
+      }
+      await sb.from('choferes').update({ device_id: S.deviceId }).eq('id', data.id);
+      guardarSesionChofer(data);
+      toast(`Bienvenido, ${data.nombre}!`);
+      if (data.is_admin) renderAdmin(); else renderChofer();
+    } else {
+      // Usuario nuevo — crear cuenta con este PIN
+      await crearChofer(nombre, pin);
+    }
+  } catch(e) {
+    toast('Error de conexión. Intentá de nuevo.', 'err');
+    renderWelcome();
   }
-}
-
-function renderPinStep(nombre, chofer, isNew) {
-  app().innerHTML = `
-    <div class="screen screen-welcome">
-      <div class="welcome-logo">🚛</div>
-      <h1 class="welcome-title">${isNew ? `Hola, ${nombre}!` : `Bienvenido, ${nombre}!`}</h1>
-      <p class="welcome-sub">${isNew ? 'Primera vez aquí. Creá tu PIN de 4 dígitos.' : 'Ingresá tu PIN para entrar.'}</p>
-      <div class="card welcome-card">
-        <div class="field">
-          <label class="field-label">${isNew ? 'Crear PIN' : 'Tu PIN'}</label>
-          <input type="password" id="inp-pin" class="inp inp-pin"
-            placeholder="• • • •" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
-        </div>
-        <button id="btn-pin-ok" class="btn btn-primary btn-full" disabled>
-          ${isNew ? 'Crear cuenta' : 'Entrar'}
-        </button>
-        <button id="btn-pin-back" class="link-btn mt-sm">← Volver</button>
-      </div>
-    </div>
-  `;
-
-  const pinInp = $('inp-pin');
-  const btnOk  = $('btn-pin-ok');
-
-  pinInp.addEventListener('input', () => {
-    pinInp.value = pinInp.value.replace(/\D/g, '').slice(0, 4);
-    btnOk.disabled = pinInp.value.length !== 4;
-  });
-  pinInp.addEventListener('keydown', e => { if (e.key === 'Enter' && !btnOk.disabled) btnOk.click(); });
-  setTimeout(() => pinInp.focus(), 100);
-
-  btnOk.addEventListener('click', async () => {
-    const pin = pinInp.value;
-    btnOk.disabled = true; btnOk.textContent = '...';
-    if (isNew) await crearChofer(nombre, pin);
-    else        await verificarPin(chofer, pin);
-  });
-
-  $('btn-pin-back').addEventListener('click', renderWelcome);
 }
 
 async function crearChofer(nombre, pin) {
   const { data, error } = await sb.from('choferes')
     .insert({ nombre, device_id: S.deviceId, is_admin: false, pin })
     .select().single();
-  if (error) { toast('Error al crear la cuenta. Intentá de nuevo.', 'err'); renderPinStep(nombre, null, true); return; }
+  if (error) { toast('Error al crear la cuenta. Intentá de nuevo.', 'err'); renderWelcome(); return; }
   guardarSesionChofer(data);
   toast(`Bienvenido, ${nombre}!`);
   renderChofer();
-}
-
-async function verificarPin(chofer, pin) {
-  if (chofer.pin !== pin) { toast('PIN incorrecto', 'err'); renderPinStep(chofer.nombre, chofer, false); return; }
-  await sb.from('choferes').update({ device_id: S.deviceId }).eq('id', chofer.id);
-  guardarSesionChofer(chofer);
-  toast(`Bienvenido, ${chofer.nombre}!`);
-  if (chofer.is_admin) renderAdmin(); else renderChofer();
 }
 
 function guardarSesionChofer(chofer) {

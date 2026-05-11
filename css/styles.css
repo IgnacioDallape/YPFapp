@@ -436,6 +436,57 @@ input[type="month"].inp { cursor: pointer; }
 .stat-val { font-size: 1.45rem; font-weight: 700; color: var(--text-dark); }
 .stat-lbl { font-size: 0.68rem; color: var(--text-mid); margin-top: 2px; line-height: 1.2; }
 
+/* ── Deuda card (tab Pendientes) ── */
+.deuda-card {
+  background: linear-gradient(135deg, var(--text-dark) 0%, #1f1810 100%);
+  color: white;
+  border-radius: var(--radius);
+  padding: 16px 18px 18px;
+  box-shadow: 0 4px 16px rgba(58,46,30,0.18);
+  position: relative;
+  overflow: hidden;
+}
+.deuda-card::before {
+  content: ''; position: absolute;
+  top: -40px; right: -40px;
+  width: 160px; height: 160px;
+  background: radial-gradient(circle, rgba(175,158,120,0.22) 0%, transparent 70%);
+  pointer-events: none;
+}
+.deuda-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+  position: relative;
+}
+.deuda-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.7rem; font-weight: 800; letter-spacing: 0.14em;
+  color: var(--color3);
+}
+.deuda-label svg { color: var(--color5); }
+.deuda-edit-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: var(--color1);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.75rem; font-weight: 600;
+  padding: 4px 10px; border-radius: 12px;
+  cursor: pointer; transition: all 0.15s;
+}
+.deuda-edit-btn:hover { background: var(--color5); border-color: var(--color5); }
+.deuda-amount {
+  font-size: 2.1rem; font-weight: 800;
+  color: white; line-height: 1.1;
+  letter-spacing: -0.01em;
+  position: relative;
+}
+.deuda-detail {
+  margin-top: 6px;
+  font-size: 0.85rem; color: var(--color3);
+  position: relative;
+}
+.deuda-detail b { color: white; font-weight: 700; }
+
 /* ── Filters ── */
 .filtros-card {
   background: var(--color2);

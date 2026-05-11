@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v23 · 2026-05-11';
+const APP_VERSION = 'v24 · 2026-05-11';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -35,6 +35,7 @@ const S = {
   fotoKm:       null,
   lightboxUrls: [],
   lightboxIdx:  0,
+  precioLitro:  0,
 };
 
 // =====================================================
@@ -599,6 +600,39 @@ function logout() {
   });
 }
 
+function showPrecioEditor() {
+  const el = document.createElement('div');
+  el.className = 'confirm-overlay';
+  el.innerHTML = `
+    <div class="confirm-box">
+      <div class="confirm-title">Precio por litro</div>
+      <div class="confirm-sub">Se usa para calcular la deuda de combustible.</div>
+      <div class="field">
+        <label class="field-label">Pesos por litro</label>
+        <input type="number" id="precio-input" class="inp" value="${S.precioLitro || ''}"
+               step="0.01" min="0" placeholder="Ej: 1450.50" autocomplete="off">
+      </div>
+      <div class="confirm-btns" style="margin-top:14px">
+        <button class="btn btn-ghost" id="precio-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="precio-ok">Guardar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const close = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); };
+  el.querySelector('#precio-cancel').addEventListener('click', close);
+  el.querySelector('#precio-ok').addEventListener('click', async () => {
+    const v = el.querySelector('#precio-input').value;
+    await savePrecioLitro(v);
+    toast('Precio actualizado ✓');
+    close();
+    loadAdminContent();
+  });
+  el.addEventListener('click', e => { if (e.target === el) close(); });
+  setTimeout(() => el.querySelector('#precio-input').focus(), 100);
+}
+
 function showConfirm(titulo, subtitulo, btnLabel, onConfirm) {
   const el = document.createElement('div');
   el.className = 'confirm-overlay';
@@ -670,7 +704,19 @@ async function renderAdmin() {
   });
 
   bindLightbox();
+  await loadPrecioLitro();
   await loadAdminContent();
+}
+
+async function loadPrecioLitro() {
+  const { data } = await sb.from('config').select('value').eq('key', 'precio_litro').maybeSingle();
+  S.precioLitro = parseFloat(data?.value) || 0;
+}
+
+async function savePrecioLitro(v) {
+  const val = String(parseFloat(v) || 0);
+  await sb.from('config').upsert({ key: 'precio_litro', value: val });
+  S.precioLitro = parseFloat(val);
 }
 
 async function loadAdminContent() {
@@ -704,6 +750,28 @@ async function loadAdminContent() {
   }
 
   let html = '';
+
+  // Deuda de combustible (solo en tab "pendientes")
+  if (S.adminTab === 'pendientes') {
+    const totalLitros = (remitos || []).reduce((a, r) => a + (r.litros || 0), 0);
+    const deuda = totalLitros * S.precioLitro;
+    const fmtARS = n => '$ ' + Math.round(n).toLocaleString('es-AR');
+    html += `
+      <div class="deuda-card">
+        <div class="deuda-head">
+          <span class="deuda-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            DEUDA DE COMBUSTIBLE
+          </span>
+          <button id="btn-edit-precio" class="deuda-edit-btn">✏ Precio</button>
+        </div>
+        <div class="deuda-amount">${fmtARS(deuda)}</div>
+        <div class="deuda-detail">
+          <b>${totalLitros.toLocaleString('es-AR')}</b> L pendientes &times; <b>${fmtARS(S.precioLitro)}</b>/L
+        </div>
+      </div>
+    `;
+  }
 
   // Stats (solo en tab "todos")
   if (S.adminTab === 'todos' && remitos) {
@@ -818,6 +886,7 @@ async function loadAdminContent() {
   bindMesPicker();
   $('btn-limpiar')?.addEventListener('click', () => { S.filtroChofer = ''; S.filtroMes = ''; loadAdminContent(); });
   $('btn-eliminar-pagados')?.addEventListener('click', eliminarPagados);
+  $('btn-edit-precio')?.addEventListener('click', showPrecioEditor);
 
   // Bind "marcar pagado" / "marcar pendiente"
   main.querySelectorAll('.btn-marcar-pagado').forEach(b => {

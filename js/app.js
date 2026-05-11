@@ -474,7 +474,7 @@ async function loadMisRemitos() {
     .select('*, remito_fotos(id)')
     .eq('chofer_id', S.choferId)
     .order('created_at', { ascending: false })
-    .limit(5);
+    .limit(3);
 
   if (!el) return;
 
@@ -492,7 +492,6 @@ async function loadMisRemitos() {
     <div class="mini-remito">
       <div class="mini-remito-top">
         <span class="mini-fecha">${fmt(r.fecha_carga)}</span>
-        <span class="status-badge ${r.pagado ? 'paid' : 'pending'}">${r.pagado ? '✓ Pagado' : 'Pendiente'}</span>
       </div>
       <div class="mini-destino">
         ${r.destino_ida}${r.destino_vuelta ? ` → ${r.destino_vuelta}` : ''}

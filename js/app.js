@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v16 · 2026-05-11';
+const APP_VERSION = 'v17 · 2026-05-11';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -856,21 +856,18 @@ function renderConsumoSeparator(newer, older) {
       </div>
       <div class="consumo-grid">
         <div class="consumo-cell">
-          <div class="consumo-svg-wrap">${iconRoute}</div>
-          <div class="consumo-value">${distance.toLocaleString('es-AR')}<span class="consumo-unit">km</span></div>
-          <div class="consumo-sublabel">Distancia</div>
+          ${iconRoute}
+          <span class="consumo-value">${distance.toLocaleString('es-AR')}<span class="consumo-unit">km</span></span>
         </div>
         <div class="consumo-vdiv"></div>
         <div class="consumo-cell">
-          <div class="consumo-svg-wrap">${iconFuel}</div>
-          <div class="consumo-value">${newer.litros}<span class="consumo-unit">L</span></div>
-          <div class="consumo-sublabel">Cargados</div>
+          ${iconFuel}
+          <span class="consumo-value">${newer.litros}<span class="consumo-unit">L</span></span>
         </div>
         <div class="consumo-vdiv"></div>
         <div class="consumo-cell consumo-cell-hl">
-          <div class="consumo-svg-wrap">${iconGauge}</div>
-          <div class="consumo-value">${l100.toFixed(1)}<span class="consumo-unit">L/100km</span></div>
-          <div class="consumo-sublabel">Rendimiento</div>
+          ${iconGauge}
+          <span class="consumo-value">${l100.toFixed(1)}<span class="consumo-unit">L/100km</span></span>
         </div>
       </div>
     </div>

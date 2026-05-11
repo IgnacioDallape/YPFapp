@@ -302,102 +302,71 @@ input[type="month"].inp { cursor: pointer; }
 
 /* ── Consumo separator (entre cargas consecutivas) ── */
 .consumo-separator {
-  position: relative;
   background: linear-gradient(135deg, #fffdf6 0%, var(--color1) 60%, var(--color2) 100%);
   border: 1px solid var(--color3);
   border-radius: var(--radius);
-  padding: 18px 14px 16px;
-  margin: 10px 6px;
-  box-shadow: 0 2px 10px rgba(58,46,30,0.07), inset 0 0 0 1px rgba(255,255,255,0.45);
+  padding: 9px 14px 10px;
+  margin: 6px 6px;
+  box-shadow: 0 1px 6px rgba(58,46,30,0.05), inset 0 0 0 1px rgba(255,255,255,0.45);
 }
-.consumo-separator::before,
-.consumo-separator::after {
-  content: ''; position: absolute; top: -7px;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: var(--color2); border: 1px solid var(--color3);
-}
-.consumo-separator::before { left: -7px; }
-.consumo-separator::after  { right: -7px; }
 
 .consumo-header {
   display: flex; align-items: center; justify-content: center;
-  gap: 10px; margin-bottom: 14px;
-  padding-bottom: 12px;
-  border-bottom: 1px dashed var(--color3);
+  gap: 8px; margin-bottom: 6px;
 }
 .consumo-pill {
   background: var(--text-dark); color: var(--color1);
-  font-size: 0.66rem; font-weight: 800; letter-spacing: 0.18em;
-  padding: 4px 10px; border-radius: 12px;
+  font-size: 0.6rem; font-weight: 800; letter-spacing: 0.16em;
+  padding: 2px 8px; border-radius: 10px;
 }
 .consumo-dates {
-  font-size: 0.92rem; font-weight: 600; color: var(--text-dark);
+  font-size: 0.82rem; font-weight: 600; color: var(--text-dark);
   font-family: 'DM Sans', sans-serif;
 }
-.consumo-arrow {
-  color: var(--color5); font-weight: 700; margin: 0 4px;
-}
+.consumo-arrow { color: var(--color5); font-weight: 700; margin: 0 2px; }
 
 .consumo-grid {
   display: grid; grid-template-columns: 1fr 1px 1fr 1px 1fr;
-  align-items: center; gap: 8px;
+  align-items: center; gap: 6px;
 }
 .consumo-cell {
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
-  padding: 4px 2px;
-}
-.consumo-svg-wrap {
   display: flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  background: rgba(175,158,120,0.14);
-  color: var(--text-dark);
-  margin-bottom: 2px;
+  gap: 7px; padding: 2px 0;
+  color: var(--text-mid);
 }
-.consumo-svg { width: 18px; height: 18px; }
+.consumo-svg { width: 20px; height: 20px; flex-shrink: 0; }
 .consumo-value {
-  font-size: 1.15rem; font-weight: 700; color: var(--text-dark);
-  line-height: 1; display: flex; align-items: baseline; gap: 3px;
+  font-size: 1.25rem; font-weight: 800; color: var(--text-dark);
+  line-height: 1; display: inline-flex; align-items: baseline; gap: 3px;
   font-family: 'DM Sans', sans-serif;
 }
 .consumo-unit {
-  font-size: 0.7rem; font-weight: 600; color: var(--text-mid);
+  font-size: 0.72rem; font-weight: 600; color: var(--text-mid);
   letter-spacing: 0.02em;
 }
-.consumo-sublabel {
-  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
-  color: var(--text-mid); text-transform: uppercase;
-}
 .consumo-vdiv {
-  width: 1px; height: 50px;
+  width: 1px; height: 26px;
   background: linear-gradient(to bottom, transparent, var(--color3), transparent);
 }
 
 /* Highlight column (rendimiento) */
-.consumo-cell-hl .consumo-svg-wrap {
-  background: var(--color5); color: white;
-}
+.consumo-cell-hl { color: var(--color5); }
 .consumo-cell-hl .consumo-value,
-.consumo-cell-hl .consumo-unit {
-  color: var(--color5);
-}
+.consumo-cell-hl .consumo-unit { color: var(--color5); }
 
 /* Mobile: stack the three cells on narrow screens */
 @media (max-width: 460px) {
   .consumo-grid {
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 4px;
   }
   .consumo-vdiv {
-    width: 60%; height: 1px;
+    width: 70%; height: 1px;
     justify-self: center;
     background: linear-gradient(to right, transparent, var(--color3), transparent);
   }
-  .consumo-cell { flex-direction: row; justify-content: center; gap: 10px; }
-  .consumo-svg-wrap { margin-bottom: 0; width: 30px; height: 30px; }
-  .consumo-svg { width: 16px; height: 16px; }
-  .consumo-sublabel { display: none; }
-  .consumo-value { font-size: 1.1rem; }
+  .consumo-cell { gap: 8px; }
+  .consumo-value { font-size: 1.15rem; }
 }
 
 .foto-thumb-wrap { position: relative; display: inline-block; }

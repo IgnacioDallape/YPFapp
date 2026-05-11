@@ -109,7 +109,6 @@ function renderWelcome() {
           <label class="field-label">PIN (4 dígitos)</label>
           <input type="password" id="inp-pin" class="inp inp-pin"
             placeholder="• • • •" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
-          <span class="field-hint">¿Primera vez? Tu PIN se crea acá.</span>
         </div>
         <button id="btn-continuar" class="btn btn-primary btn-full" disabled>Entrar →</button>
         <div class="divider"></div>
@@ -162,39 +161,30 @@ async function handleLogin(nombre, pin) {
   if (!SUPABASE_CONFIGURED) { toast('Configurá Supabase primero', 'err'); return; }
   setLoading('Verificando...');
   try {
+    // Busca por nombre e PIN juntos — si no coinciden ambos, no entra
     const { data, error } = await sb.from('choferes')
-      .select('*').ilike('nombre', nombre).maybeSingle();
+      .select('*')
+      .ilike('nombre', nombre)
+      .eq('pin', pin)
+      .limit(1)
+      .maybeSingle();
+
     if (error) throw error;
 
-    if (data) {
-      // Usuario existente — verificar PIN (cast a string por si Postgres lo guardó como integer)
-      if (String(data.pin) !== String(pin)) {
-        toast('PIN incorrecto', 'err');
-        renderWelcome();
-        return;
-      }
-      await sb.from('choferes').update({ device_id: S.deviceId }).eq('id', data.id);
-      guardarSesionChofer(data);
-      toast(`Bienvenido, ${data.nombre}!`);
-      if (data.is_admin) renderAdmin(); else renderChofer();
-    } else {
-      // Usuario nuevo — crear cuenta con este PIN
-      await crearChofer(nombre, pin);
+    if (!data) {
+      toast('Usuario o PIN incorrecto', 'err');
+      renderWelcome();
+      return;
     }
+
+    await sb.from('choferes').update({ device_id: S.deviceId }).eq('id', data.id);
+    guardarSesionChofer(data);
+    toast(`Bienvenido, ${data.nombre}!`);
+    if (data.is_admin) renderAdmin(); else renderChofer();
   } catch(e) {
     toast('Error de conexión. Intentá de nuevo.', 'err');
     renderWelcome();
   }
-}
-
-async function crearChofer(nombre, pin) {
-  const { data, error } = await sb.from('choferes')
-    .insert({ nombre, device_id: S.deviceId, is_admin: false, pin })
-    .select().single();
-  if (error) { toast('Error al crear la cuenta. Intentá de nuevo.', 'err'); renderWelcome(); return; }
-  guardarSesionChofer(data);
-  toast(`Bienvenido, ${nombre}!`);
-  renderChofer();
 }
 
 function guardarSesionChofer(chofer) {

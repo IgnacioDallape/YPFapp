@@ -412,10 +412,65 @@ input[type="month"].inp { cursor: pointer; }
 .stat-lbl { font-size: 0.68rem; color: var(--text-mid); margin-top: 2px; line-height: 1.2; }
 
 /* ── Filters ── */
-.filtros-row {
-  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+.filtros-card {
+  background: var(--color2);
+  border: 1px solid var(--color3);
+  border-radius: var(--radius);
+  padding: 12px 14px 14px;
+  box-shadow: var(--shadow);
 }
-.filtros-row .inp-sm { flex: 1; min-width: 110px; }
+.filtros-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.filtros-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.72rem; font-weight: 800;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-mid);
+}
+.filtros-title svg { color: var(--color5); }
+.filtros-clear {
+  background: none; border: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.74rem; font-weight: 700;
+  color: var(--color5); cursor: pointer;
+  padding: 2px 8px; border-radius: 12px;
+  transition: background 0.15s;
+}
+.filtros-clear:hover { background: rgba(175,158,120,0.18); }
+
+.filtros-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.filtro-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.filtro-label {
+  font-size: 0.66rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-mid);
+}
+
+/* Select customizado con chevron propio */
+.filtro-select-wrap { position: relative; }
+.filtro-select {
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  padding-right: 32px !important;
+  cursor: pointer;
+  background: #fffbf3;
+}
+.filtro-select::-ms-expand { display: none; }
+.filtro-chev {
+  position: absolute; right: 10px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-mid);
+  pointer-events: none;
+}
+
+.filtro-input { background: #fffbf3; cursor: pointer; }
+.filtro-input::-webkit-calendar-picker-indicator {
+  cursor: pointer; opacity: 0.6;
+  filter: invert(0.3) sepia(0.4);
+}
 
 /* ── Empty ── */
 .empty-msg { text-align: center; padding: 36px 16px; color: var(--text-mid); font-size: 0.95rem; }

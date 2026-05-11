@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v17 · 2026-05-11';
+const APP_VERSION = 'v18 · 2026-05-11';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -725,13 +725,31 @@ async function loadAdminContent() {
     const opts = (choferes || [])
       .map(c => `<option value="${c.id}" ${S.filtroChofer === c.id ? 'selected' : ''}>${c.nombre}</option>`)
       .join('');
+    const hasFilter = S.filtroChofer || S.filtroMes;
     html += `
-      <div class="filtros-row">
-        <select id="filtro-chofer" class="inp inp-sm">
-          <option value="">Todos los choferes</option>${opts}
-        </select>
-        <input type="month" id="filtro-mes" class="inp inp-sm" value="${S.filtroMes}">
-        <button id="btn-limpiar" class="btn btn-ghost btn-sm">Limpiar</button>
+      <div class="filtros-card">
+        <div class="filtros-head">
+          <span class="filtros-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+            Filtros
+          </span>
+          ${hasFilter ? `<button id="btn-limpiar" class="filtros-clear">✕ Limpiar</button>` : ''}
+        </div>
+        <div class="filtros-row">
+          <div class="filtro-field">
+            <label class="filtro-label">Chofer</label>
+            <div class="filtro-select-wrap">
+              <select id="filtro-chofer" class="inp inp-sm filtro-select">
+                <option value="">Todos</option>${opts}
+              </select>
+              <svg class="filtro-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </div>
+          <div class="filtro-field">
+            <label class="filtro-label">Mes</label>
+            <input type="month" id="filtro-mes" class="inp inp-sm filtro-input" value="${S.filtroMes}">
+          </div>
+        </div>
       </div>
       <div class="admin-actions-row">
         <button id="btn-eliminar-pagados" class="btn btn-danger btn-sm">🗑 Eliminar pagados</button>

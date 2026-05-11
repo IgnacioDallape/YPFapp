@@ -1,5 +1,5 @@
 // RemitosApp — Service Worker
-const CACHE = 'remitosapp-v11';
+const CACHE = 'remitosapp-v12';
 const STATIC = [
   '/',
   '/index.html',

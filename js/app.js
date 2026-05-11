@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v11 · 2026-05-10';
+const APP_VERSION = 'v12 · 2026-05-10';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -282,9 +282,9 @@ function renderChofer() {
           </div>
 
           <div class="field">
-            <label class="field-label">Comentarios *</label>
+            <label class="field-label">Comentarios</label>
             <textarea id="f-comentarios" class="inp inp-ta" rows="3"
-              placeholder="Ej: Rotura de cubierta, espera en destino, observaciones..."></textarea>
+              placeholder="Ej: Rotura de cubierta, espera en destino, observaciones... (opcional)"></textarea>
           </div>
 
           <div class="field">
@@ -332,15 +332,13 @@ function bindChoferForm() {
     const litros = parseFloat($('f-litros').value);
     const ida    = $('f-destino-ida').value.trim();
     const vuelta = $('f-destino-vuelta').value.trim();
-    const coment = $('f-comentarios').value.trim();
-    btnEnviar.disabled = !(fecha && litros > 0 && ida && vuelta && coment && S.fotosStaged.length > 0);
+    btnEnviar.disabled = !(fecha && litros > 0 && ida && vuelta && S.fotosStaged.length > 0);
   };
 
   $('f-fecha').addEventListener('change', checkValid);
   $('f-litros').addEventListener('input', checkValid);
   $('f-destino-ida').addEventListener('input', checkValid);
   $('f-destino-vuelta').addEventListener('input', checkValid);
-  $('f-comentarios').addEventListener('input', checkValid);
 
   const addFotos = input => {
     S.fotosStaged = [...S.fotosStaged, ...Array.from(input.files)];
@@ -430,10 +428,10 @@ async function submitRemito() {
   const destinoIda     = $('f-destino-ida').value.trim();
   const destinoVuelta  = $('f-destino-vuelta').value.trim();
   const litros         = parseFloat($('f-litros').value);
-  const comentarios    = $('f-comentarios').value.trim();
+  const comentarios    = $('f-comentarios').value.trim() || null;
 
   // Doble validación por si el botón se habilitó indebidamente
-  if (!fecha || !destinoIda || !destinoVuelta || !comentarios || !(litros > 0)) {
+  if (!fecha || !destinoIda || !destinoVuelta || !(litros > 0)) {
     toast('Completá todos los campos antes de enviar', 'err');
     $('btn-enviar').disabled = false;
     $('btn-enviar').textContent = '📤 Enviar remito';

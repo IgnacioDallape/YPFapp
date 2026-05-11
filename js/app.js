@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v10 · 2026-05-10';
+const APP_VERSION = 'v11 · 2026-05-10';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -266,7 +266,7 @@ function renderChofer() {
               <input type="date" id="f-fecha" class="inp" value="${today()}">
             </div>
             <div class="field">
-              <label class="field-label">Litros cargados</label>
+              <label class="field-label">Litros cargados *</label>
               <input type="number" id="f-litros" class="inp" placeholder="0.0" step="0.1" min="0">
             </div>
           </div>
@@ -277,12 +277,12 @@ function renderChofer() {
           </div>
 
           <div class="field">
-            <label class="field-label">Destino vuelta</label>
-            <input type="text" id="f-destino-vuelta" class="inp" placeholder="Ciudad / empresa de regreso (opcional)">
+            <label class="field-label">Destino vuelta *</label>
+            <input type="text" id="f-destino-vuelta" class="inp" placeholder="Ciudad / empresa de regreso">
           </div>
 
           <div class="field">
-            <label class="field-label">Comentarios</label>
+            <label class="field-label">Comentarios *</label>
             <textarea id="f-comentarios" class="inp inp-ta" rows="3"
               placeholder="Ej: Rotura de cubierta, espera en destino, observaciones..."></textarea>
           </div>
@@ -328,13 +328,19 @@ function bindChoferForm() {
   let _prevObjUrls = []; // track active object URLs so we can revoke them on re-render
 
   const checkValid = () => {
-    const fecha = $('f-fecha').value;
-    const ida   = $('f-destino-ida').value.trim();
-    btnEnviar.disabled = !(fecha && ida && S.fotosStaged.length > 0);
+    const fecha  = $('f-fecha').value;
+    const litros = parseFloat($('f-litros').value);
+    const ida    = $('f-destino-ida').value.trim();
+    const vuelta = $('f-destino-vuelta').value.trim();
+    const coment = $('f-comentarios').value.trim();
+    btnEnviar.disabled = !(fecha && litros > 0 && ida && vuelta && coment && S.fotosStaged.length > 0);
   };
 
   $('f-fecha').addEventListener('change', checkValid);
+  $('f-litros').addEventListener('input', checkValid);
   $('f-destino-ida').addEventListener('input', checkValid);
+  $('f-destino-vuelta').addEventListener('input', checkValid);
+  $('f-comentarios').addEventListener('input', checkValid);
 
   const addFotos = input => {
     S.fotosStaged = [...S.fotosStaged, ...Array.from(input.files)];
@@ -422,9 +428,17 @@ async function submitRemito() {
 
   const fecha          = $('f-fecha').value;
   const destinoIda     = $('f-destino-ida').value.trim();
-  const destinoVuelta  = $('f-destino-vuelta').value.trim() || null;
-  const litros         = parseFloat($('f-litros').value) || null;
-  const comentarios    = $('f-comentarios').value.trim() || null;
+  const destinoVuelta  = $('f-destino-vuelta').value.trim();
+  const litros         = parseFloat($('f-litros').value);
+  const comentarios    = $('f-comentarios').value.trim();
+
+  // Doble validación por si el botón se habilitó indebidamente
+  if (!fecha || !destinoIda || !destinoVuelta || !comentarios || !(litros > 0)) {
+    toast('Completá todos los campos antes de enviar', 'err');
+    $('btn-enviar').disabled = false;
+    $('btn-enviar').textContent = '📤 Enviar remito';
+    return;
+  }
 
   // 1. Insertar remito
   const { data: remito, error: rErr } = await sb

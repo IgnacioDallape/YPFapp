@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v18 · 2026-05-11';
+const APP_VERSION = 'v19 · 2026-05-11';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -726,6 +726,8 @@ async function loadAdminContent() {
       .map(c => `<option value="${c.id}" ${S.filtroChofer === c.id ? 'selected' : ''}>${c.nombre}</option>`)
       .join('');
     const hasFilter = S.filtroChofer || S.filtroMes;
+    const selected = (choferes || []).find(c => c.id === S.filtroChofer);
+    const choferLabel = selected ? selected.nombre : 'Todos los choferes';
     html += `
       <div class="filtros-card">
         <div class="filtros-head">
@@ -738,11 +740,17 @@ async function loadAdminContent() {
         <div class="filtros-row">
           <div class="filtro-field">
             <label class="filtro-label">Chofer</label>
-            <div class="filtro-select-wrap">
-              <select id="filtro-chofer" class="inp inp-sm filtro-select">
-                <option value="">Todos</option>${opts}
-              </select>
-              <svg class="filtro-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            <div class="cdd" id="cdd-chofer">
+              <button type="button" class="cdd-trigger">
+                <span class="cdd-text ${!selected ? 'cdd-placeholder' : ''}">${choferLabel}</span>
+                <svg class="cdd-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="cdd-menu hidden">
+                <button class="cdd-opt ${!S.filtroChofer ? 'is-active' : ''}" data-value="">Todos los choferes</button>
+                ${(choferes || []).map(c => `
+                  <button class="cdd-opt ${S.filtroChofer === c.id ? 'is-active' : ''}" data-value="${c.id}">${c.nombre}</button>
+                `).join('')}
+              </div>
             </div>
           </div>
           <div class="filtro-field">
@@ -776,10 +784,9 @@ async function loadAdminContent() {
   main.innerHTML = html;
 
   // Bind filtros
-  const fc = $('filtro-chofer');
+  bindChoferDropdown();
   const fm = $('filtro-mes');
-  if (fc) fc.addEventListener('change', () => { S.filtroChofer = fc.value; loadAdminContent(); });
-  if (fm) fm.addEventListener('change', () => { S.filtroMes    = fm.value; loadAdminContent(); });
+  if (fm) fm.addEventListener('change', () => { S.filtroMes = fm.value; loadAdminContent(); });
   $('btn-limpiar')?.addEventListener('click', () => { S.filtroChofer = ''; S.filtroMes = ''; loadAdminContent(); });
   $('btn-eliminar-pagados')?.addEventListener('click', eliminarPagados);
 
@@ -931,6 +938,39 @@ async function eliminarPagados() {
       loadAdminContent();
     }
   );
+}
+
+// =====================================================
+// CUSTOM DROPDOWN (chofer filter)
+// =====================================================
+function bindChoferDropdown() {
+  const cdd = document.getElementById('cdd-chofer');
+  if (!cdd) return;
+  const trigger = cdd.querySelector('.cdd-trigger');
+  const menu    = cdd.querySelector('.cdd-menu');
+
+  const onDoc = (e) => { if (!cdd.contains(e.target)) close(); };
+  const close = () => {
+    menu.classList.add('hidden');
+    trigger.classList.remove('is-open');
+    document.removeEventListener('click', onDoc);
+  };
+  const open = () => {
+    menu.classList.remove('hidden');
+    trigger.classList.add('is-open');
+    setTimeout(() => document.addEventListener('click', onDoc), 0);
+  };
+
+  trigger.addEventListener('click', () => {
+    if (menu.classList.contains('hidden')) open(); else close();
+  });
+
+  cdd.querySelectorAll('.cdd-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      S.filtroChofer = opt.dataset.value;
+      loadAdminContent();
+    });
+  });
 }
 
 // =====================================================

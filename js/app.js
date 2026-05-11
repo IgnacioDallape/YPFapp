@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v12 · 2026-05-10';
+const APP_VERSION = 'v13 · 2026-05-10';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -291,14 +291,10 @@ function renderChofer() {
             <label class="field-label">
               Fotos del remito &nbsp;<span class="req-badge">mínimo 1 requerida *</span>
             </label>
-            <div class="foto-actions">
+            <div class="foto-actions foto-actions-single">
               <label class="foto-btn foto-btn-cam">
                 <input type="file" id="f-fotos-cam" accept="image/*" capture="environment" class="hidden">
-                📷 Cámara
-              </label>
-              <label class="foto-btn foto-btn-gal">
-                <input type="file" id="f-fotos-gal" accept="image/*" multiple class="hidden">
-                🖼 Galería
+                📷 Sacar foto
               </label>
             </div>
             <div id="foto-previews" class="foto-previews"></div>
@@ -347,7 +343,6 @@ function bindChoferForm() {
     checkValid();
   };
   $('f-fotos-cam').addEventListener('change', function() { addFotos(this); });
-  $('f-fotos-gal').addEventListener('change', function() { addFotos(this); });
 
   function renderFotoPreviews() {
     // Revoke previous object URLs to free memory (important on mobile)

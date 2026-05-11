@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v21 · 2026-05-11';
+const APP_VERSION = 'v22 · 2026-05-11';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -681,7 +681,8 @@ async function loadAdminContent() {
   let query = sb
     .from('remitos')
     .select('*, choferes(nombre), remito_fotos(storage_url)')
-    .order('created_at', { ascending: false });
+    .order('fecha_carga', { ascending: true })
+    .order('created_at', { ascending: true });
 
   if (S.adminTab === 'pendientes') query = query.eq('pagado', false);
   if (S.filtroChofer)              query = query.eq('chofer_id', S.filtroChofer);
@@ -802,8 +803,8 @@ async function loadAdminContent() {
     for (let i = 0; i < remitos.length; i++) {
       pieces.push(renderRemitoCard(remitos[i]));
       if (i + 1 < remitos.length) {
-        // remitos[i] es MÁS NUEVO que remitos[i+1] (orden desc por created_at)
-        const sep = renderConsumoSeparator(remitos[i], remitos[i + 1]);
+        // remitos[i] es MÁS VIEJO que remitos[i+1] (orden asc por fecha_carga)
+        const sep = renderConsumoSeparator(remitos[i + 1], remitos[i]);
         if (sep) pieces.push(sep);
       }
     }

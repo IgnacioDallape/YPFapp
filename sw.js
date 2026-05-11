@@ -1,5 +1,5 @@
 // RemitosApp — Service Worker
-const CACHE = 'remitosapp-v8';
+const CACHE = 'remitosapp-v9';
 const STATIC = [
   '/',
   '/index.html',
@@ -10,11 +10,16 @@ const STATIC = [
   '/icons/icon-maskable.svg',
 ];
 
-// Instalar: cachear assets estáticos
+// Instalar: cachear assets estáticos (NO skipWaiting — esperamos que el usuario confirme)
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(STATIC)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(c => c.addAll(STATIC))
   );
+});
+
+// El cliente puede mandar SKIP_WAITING para activar la nueva versión
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 // Activar: limpiar caches viejos

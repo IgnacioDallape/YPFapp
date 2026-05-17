@@ -128,9 +128,13 @@ function renderWelcome() {
           <button id="btn-admin-login" class="btn btn-secondary btn-full mt-sm">Entrar como admin</button>
         </div>
       </div>
+      <div id="install-wrap-welcome"></div>
       <div class="version-tag">${APP_VERSION}</div>
     </div>
   `;
+
+  // Botón de instalación PWA
+  $('install-wrap-welcome').appendChild(makeInstallBtn('btn-install-welcome'));
 
   const inpNombre = $('inp-nombre');
   const inpPin    = $('inp-pin');
@@ -256,7 +260,10 @@ function renderChofer() {
     <div class="screen screen-chofer">
       <header class="app-header">
         <span class="header-name">Hola, ${S.nombre} 👋 <span class="version-inline">${APP_VERSION}</span></span>
-        <button id="btn-logout" class="btn-logout" title="Cerrar sesión">↩ Salir</button>
+        <div class="header-actions">
+          <div id="install-wrap-chofer"></div>
+          <button id="btn-logout" class="btn-logout" title="Cerrar sesión">↩ Salir</button>
+        </div>
       </header>
       <main class="chofer-main">
 
@@ -343,6 +350,7 @@ function renderChofer() {
   bindChoferForm();
   loadMisRemitos();
   $('btn-logout').addEventListener('click', logout);
+  $('install-wrap-chofer').appendChild(makeInstallBtn('btn-install-header'));
 }
 
 function bindChoferForm() {
@@ -1206,6 +1214,40 @@ function openLightbox(urls, idx) {
 
 function updateLightboxImg() { $('lb-img').src = S.lightboxUrls[S.lightboxIdx]; }
 function closeLightbox()     { $('lightbox').classList.add('hidden'); $('lb-img').src = ''; }
+
+// =====================================================
+// INSTALL PWA
+// =====================================================
+let _installPrompt = null;
+let _installBtn    = null; // referencia al botón activo en el DOM
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _installPrompt = e;
+  // Si ya hay un botón en el DOM, lo mostramos
+  if (_installBtn) _installBtn.classList.remove('hidden');
+});
+
+window.addEventListener('appinstalled', () => {
+  _installPrompt = null;
+  if (_installBtn) _installBtn.classList.add('hidden');
+});
+
+async function triggerInstall() {
+  if (!_installPrompt) return;
+  _installPrompt.prompt();
+  const { outcome } = await _installPrompt.userChoice;
+  if (outcome === 'accepted') _installPrompt = null;
+}
+
+function makeInstallBtn(extraClass = '') {
+  const btn = document.createElement('button');
+  btn.className = `btn-install ${extraClass} ${_installPrompt ? '' : 'hidden'}`.trim();
+  btn.innerHTML = '📲 Agregar al escritorio';
+  btn.addEventListener('click', triggerInstall);
+  _installBtn = btn;
+  return btn;
+}
 
 // =====================================================
 // START

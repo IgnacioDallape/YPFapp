@@ -755,6 +755,35 @@ input[type="month"].inp { cursor: pointer; }
   font-weight: 400; margin-left: 4px;
 }
 
+/* ── Install PWA button ── */
+.btn-install {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--text-dark); color: var(--color1);
+  border: none; border-radius: 50px;
+  font-family: 'DM Sans', sans-serif; font-size: 0.88rem; font-weight: 600;
+  cursor: pointer; transition: background 0.18s, transform 0.12s;
+}
+.btn-install:hover { background: var(--text-mid); transform: translateY(-1px); }
+.btn-install:active { transform: scale(0.97); }
+.btn-install.hidden { display: none; }
+
+/* En bienvenida: grande y centrado */
+.btn-install-welcome {
+  padding: 13px 24px; font-size: 1rem;
+  margin-top: 8px; margin-bottom: 4px;
+  box-shadow: 0 3px 12px rgba(58,46,30,0.18);
+}
+
+/* En el header del chofer: compacto */
+.btn-install-header {
+  padding: 7px 14px; font-size: 0.78rem;
+}
+
+/* Header actions: agrupa botón install + logout */
+.header-actions {
+  display: flex; align-items: center; gap: 8px;
+}
+
 /* ── Utils ── */
 .hidden { display: none !important; }
 

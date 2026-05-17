@@ -305,13 +305,13 @@ function renderChofer() {
           </div>
 
           <div class="field">
-            <label class="field-label">Destino ida *</label>
-            <input type="text" id="f-destino-ida" class="inp" placeholder="Ciudad / empresa de destino">
+            <label class="field-label">Destino ida * <span style="font-size:0.75em;font-weight:400;opacity:0.7">(del último viaje)</span></label>
+            <input type="text" id="f-destino-ida" class="inp" placeholder="¿A dónde fue en el último viaje?">
           </div>
 
           <div class="field">
-            <label class="field-label">Destino vuelta *</label>
-            <input type="text" id="f-destino-vuelta" class="inp" placeholder="Ciudad / empresa de regreso">
+            <label class="field-label">Destino vuelta * <span style="font-size:0.75em;font-weight:400;opacity:0.7">(del último viaje)</span></label>
+            <input type="text" id="f-destino-vuelta" class="inp" placeholder="¿De dónde regresó en el último viaje?">
           </div>
 
           <div class="field">

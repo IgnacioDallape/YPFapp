@@ -784,6 +784,46 @@ input[type="month"].inp { cursor: pointer; }
   display: flex; align-items: center; gap: 8px;
 }
 
+/* Fallback manual (Samsung Internet y similares) */
+.btn-install-manual {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--text-dark); color: var(--color1);
+  border: none; border-radius: 50px;
+  font-family: 'DM Sans', sans-serif; font-size: 0.88rem; font-weight: 600;
+  cursor: pointer; transition: background 0.18s, transform 0.12s;
+  padding: 13px 24px; font-size: 1rem;
+  margin-top: 8px; margin-bottom: 4px;
+  box-shadow: 0 3px 12px rgba(58,46,30,0.18);
+}
+.btn-install-manual.hidden { display: none; }
+.btn-install-manual:hover  { background: var(--text-mid); transform: translateY(-1px); }
+
+/* Modal de instrucciones de instalación */
+.install-modal-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(58,46,30,0.55); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.install-modal {
+  background: var(--color1); border-radius: 20px;
+  padding: 28px 24px; max-width: 340px; width: 100%;
+  box-shadow: 0 8px 40px rgba(58,46,30,0.25);
+}
+.install-modal-title {
+  font-size: 1.15rem; font-weight: 700; color: var(--text-dark);
+  margin-bottom: 6px;
+}
+.install-modal-browser {
+  font-size: 0.85rem; color: var(--text-mid); margin-bottom: 16px;
+}
+.install-modal-steps {
+  padding-left: 20px; display: flex; flex-direction: column; gap: 10px;
+  margin-bottom: 20px;
+}
+.install-modal-steps li {
+  font-size: 0.92rem; color: var(--text-dark); line-height: 1.4;
+}
+
 /* ── Utils ── */
 .hidden { display: none !important; }
 

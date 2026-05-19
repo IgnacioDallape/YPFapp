@@ -1,5 +1,5 @@
 // RemitosApp — Service Worker
-const CACHE = 'remitosapp-v24';
+const CACHE = 'remitosapp-v25';
 const STATIC = [
   '/',
   '/index.html',
@@ -8,6 +8,8 @@ const STATIC = [
   '/manifest.json',
   '/icons/icon.svg',
   '/icons/icon-maskable.svg',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
 ];
 
 // Instalar: cachear assets estáticos (NO skipWaiting — esperamos que el usuario confirme)

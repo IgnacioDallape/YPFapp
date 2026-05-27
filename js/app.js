@@ -297,7 +297,7 @@ function renderChofer() {
             </label>
             <div class="foto-actions foto-actions-single">
               <label class="foto-btn foto-btn-cam">
-                <input type="file" id="f-foto-km" accept="image/*" capture="environment" class="hidden">
+                <input type="file" id="f-foto-km" accept="image/*" class="hidden">
                 📷 Sacar foto del km
               </label>
             </div>
@@ -326,7 +326,7 @@ function renderChofer() {
             </label>
             <div class="foto-actions foto-actions-single">
               <label class="foto-btn foto-btn-cam">
-                <input type="file" id="f-fotos-cam" accept="image/*" capture="environment" class="hidden">
+                <input type="file" id="f-fotos-cam" accept="image/*" class="hidden">
                 📷 Sacar foto
               </label>
             </div>

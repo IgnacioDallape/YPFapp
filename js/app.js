@@ -1218,23 +1218,18 @@ function closeLightbox()     { $('lightbox').classList.add('hidden'); $('lb-img'
 // =====================================================
 // INSTALL PWA
 // =====================================================
-let _installPrompt    = null;
-let _installBtn       = null;
-let _installFallback  = null;
-let _promptFired      = false;
+let _installPrompt = null;
+let _installBtn    = null;
 
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   _installPrompt = e;
-  _promptFired   = true;
-  if (_installBtn)      _installBtn.classList.remove('hidden');
-  if (_installFallback) _installFallback.classList.add('hidden');
+  if (_installBtn) _installBtn.classList.remove('hidden');
 });
 
 window.addEventListener('appinstalled', () => {
   _installPrompt = null;
-  if (_installBtn)      _installBtn.classList.add('hidden');
-  if (_installFallback) _installFallback.classList.add('hidden');
+  if (_installBtn) _installBtn.classList.add('hidden');
 });
 
 async function triggerInstall() {
@@ -1244,75 +1239,8 @@ async function triggerInstall() {
   if (outcome === 'accepted') _installPrompt = null;
 }
 
-// Detecta el browser para mostrar instrucciones correctas
-function detectBrowser() {
-  const ua = navigator.userAgent;
-  if (/SamsungBrowser/i.test(ua))   return 'samsung';
-  if (/Firefox/i.test(ua))          return 'firefox';
-  if (/OPR|Opera/i.test(ua))        return 'opera';
-  if (/Chrome/i.test(ua))           return 'chrome';
-  if (/Safari/i.test(ua))           return 'safari';
-  return 'generic';
-}
-
-function getInstallSteps() {
-  const br = detectBrowser();
-  const steps = {
-    samsung: [
-      'Tocá el ícono <b>☰</b> (menú abajo) o los tres puntos <b>⋮</b>',
-      'Tocá <b>"Agregar página a"</b>',
-      'Seleccioná <b>"Pantalla de inicio"</b>',
-      'Confirmá tocando <b>"Agregar"</b>',
-    ],
-    chrome: [
-      'Tocá los tres puntos <b>⋮</b> arriba a la derecha',
-      'Tocá <b>"Agregar a pantalla de inicio"</b> o <b>"Instalar app"</b>',
-      'Confirmá tocando <b>"Agregar"</b>',
-    ],
-    firefox: [
-      'Tocá los tres puntos <b>⋮</b>',
-      'Tocá <b>"Instalar"</b> o <b>"Agregar a pantalla de inicio"</b>',
-    ],
-    safari: [
-      'Tocá el botón <b>Compartir</b> (cuadro con flecha)',
-      'Elegí <b>"Agregar a pantalla de inicio"</b>',
-      'Confirmá tocando <b>"Agregar"</b>',
-    ],
-    generic: [
-      'Abrí el menú del navegador (tres puntos o ☰)',
-      'Buscá <b>"Agregar a pantalla de inicio"</b> o <b>"Instalar"</b>',
-      'Confirmá la instalación',
-    ],
-  };
-  const names = {
-    samsung:'Samsung Internet', chrome:'Chrome', firefox:'Firefox',
-    safari:'Safari', opera:'Opera', generic:'tu navegador'
-  };
-  return { steps: steps[br] || steps.generic, browser: names[br] || names.generic };
-}
-
-function showInstallModal() {
-  if (document.getElementById('install-modal')) return;
-  const { steps, browser } = getInstallSteps();
-  const modal = document.createElement('div');
-  modal.id = 'install-modal';
-  modal.className = 'install-modal-overlay';
-  modal.innerHTML = `
-    <div class="install-modal">
-      <div class="install-modal-title">📲 Cómo instalar la app</div>
-      <div class="install-modal-browser">Pasos para <b>${browser}</b>:</div>
-      <ol class="install-modal-steps">
-        ${steps.map(s => `<li>${s}</li>`).join('')}
-      </ol>
-      <button class="btn-install btn-install-welcome" style="width:100%;margin-top:4px" onclick="document.getElementById('install-modal').remove()">Entendido</button>
-    </div>
-  `;
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  document.body.appendChild(modal);
-}
-
 function makeInstallBtn(extraClass = '') {
-  // Wrapper con botón automático + fallback manual
+  // Solo botón automático — solo aparece si el navegador soporta PWA
   const wrap = document.createElement('div');
   wrap.className = 'install-wrap';
 
@@ -1322,19 +1250,7 @@ function makeInstallBtn(extraClass = '') {
   btn.addEventListener('click', triggerInstall);
   _installBtn = btn;
 
-  const fallback = document.createElement('button');
-  fallback.className = `btn-install-manual ${extraClass} ${_promptFired ? 'hidden' : ''}`.trim();
-  fallback.innerHTML = '📲 Instalar app';
-  fallback.addEventListener('click', showInstallModal);
-  _installFallback = fallback;
-
-  // Si después de 4s el evento nunca llegó → mostrar fallback
-  setTimeout(() => {
-    if (!_promptFired && _installFallback) _installFallback.classList.remove('hidden');
-  }, 4000);
-
   wrap.appendChild(btn);
-  wrap.appendChild(fallback);
   return wrap;
 }
 

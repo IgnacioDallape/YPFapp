@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v25 · 2026-05-19';
+const APP_VERSION = 'v26 · 2026-05-28';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -73,7 +73,23 @@ async function init() {
   if (!SUPABASE_CONFIGURED) { renderWelcome(); return; }
 
   if (S.isAdmin) { renderAdmin(); return; }
-  if (S.choferId && S.nombre) { renderChofer(); return; }
+
+  // Sesión cacheada de chofer: revalidar el id contra la DB por si cambió
+  // en el backend (evita errores de foreign key al enviar remitos).
+  if (S.choferId && S.nombre) {
+    try {
+      let { data } = await sb.from('choferes').select('*').ilike('nombre', S.nombre).maybeSingle();
+      if (!data) {
+        ({ data } = await sb.from('choferes').select('*').eq('device_id', S.deviceId).maybeSingle());
+      }
+      if (data) {
+        guardarSesionChofer(data); // refresca id/nombre/is_admin si cambiaron
+        if (data.is_admin) { renderAdmin(); return; }
+      }
+    } catch (e) { /* sin conexión: seguir con la sesión cacheada */ }
+    renderChofer();
+    return;
+  }
 
   setLoading();
   try {
@@ -502,15 +518,28 @@ async function submitRemito() {
   }
 
   // 1. Insertar remito (sin foto_km_url aún — se completa luego)
-  const { data: remito, error: rErr } = await sb
-    .from('remitos')
-    .insert({ chofer_id: S.choferId, fecha_carga: fecha, numero, destino_ida: destinoIda,
-              destino_vuelta: destinoVuelta, litros, km, comentarios })
-    .select().single();
+  const remitoData = { chofer_id: S.choferId, fecha_carga: fecha, numero, destino_ida: destinoIda,
+                       destino_vuelta: destinoVuelta, litros, km, comentarios };
+  let { data: remito, error: rErr } = await sb
+    .from('remitos').insert(remitoData).select().single();
+
+  // Auto-reparación: si el chofer_id cacheado quedó viejo (FK 23503),
+  // re-buscar el chofer por nombre, refrescar el id y reintentar una vez.
+  if (rErr && rErr.code === '23503') {
+    try {
+      const { data: ch } = await sb.from('choferes').select('*').ilike('nombre', S.nombre).maybeSingle();
+      if (ch && ch.id !== S.choferId) {
+        guardarSesionChofer(ch);
+        remitoData.chofer_id = ch.id;
+        ({ data: remito, error: rErr } = await sb
+          .from('remitos').insert(remitoData).select().single());
+      }
+    } catch (e) { /* dejar que caiga al manejo de error de abajo */ }
+  }
 
   if (rErr) {
     console.error('Remito insert error:', rErr);
-    toast(`Error al enviar: ${rErr.message}`, 'err');
+    toast('No se pudo enviar el remito. Cerrá sesión y volvé a entrar.', 'err');
     btn.disabled = false;
     btn.textContent = '📤 Enviar remito';
     return;

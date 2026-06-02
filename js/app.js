@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v26 · 2026-05-28';
+const APP_VERSION = 'v27 · 2026-06-02';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -786,6 +786,10 @@ async function loadAdminContent() {
     return;
   }
 
+  // Cache de remitos para el editor (se busca por id desde el botón "Editar")
+  _remitosCache = {};
+  (remitos || []).forEach(r => { _remitosCache[r.id] = r; });
+
   let html = '';
 
   // Deuda de combustible (solo en tab "pendientes")
@@ -939,6 +943,11 @@ async function loadAdminContent() {
       openLightbox(JSON.parse(img.dataset.urls), +img.dataset.idx);
     });
   });
+
+  // Bind "editar remito"
+  main.querySelectorAll('.btn-edit-remito').forEach(b => {
+    b.addEventListener('click', () => showEditRemito(b.dataset.id));
+  });
 }
 
 function renderRemitoCard(r) {
@@ -974,7 +983,10 @@ function renderRemitoCard(r) {
           <span class="chofer-chip">${nombre}</span>
           <span class="fecha-chip">${fmt(r.fecha_carga)}</span>
         </div>
-        <span class="status-badge ${r.pagado ? 'paid' : 'pending'}">${r.pagado ? '✓ Pagado' : 'Pendiente'}</span>
+        <div class="remito-header-actions">
+          <button class="btn-edit-remito" data-id="${r.id}" title="Editar remito">✏ Editar</button>
+          <span class="status-badge ${r.pagado ? 'paid' : 'pending'}">${r.pagado ? '✓ Pagado' : 'Pendiente'}</span>
+        </div>
       </div>
       <div class="remito-destinos">
         <span class="destino-tag">📍 ${r.destino_ida}</span>
@@ -1059,6 +1071,219 @@ function marcarPendiente(id) {
     if (error) { toast('Error al actualizar', 'err'); return; }
     toast('Remito marcado como pendiente ✓');
     loadAdminContent();
+  });
+}
+
+// Cache de remitos cargados (para el editor del admin)
+let _remitosCache = {};
+
+// Editor de remito (solo admin): permite corregir datos y agregar/quitar fotos
+function showEditRemito(id) {
+  const r = _remitosCache[id];
+  if (!r) { toast('No se encontró el remito', 'err'); return; }
+
+  // Fotos nuevas a subir (en memoria hasta guardar) y fotos existentes a borrar
+  let _nuevasFotos = [];
+  let _kmReemplazo = null;             // File nuevo para la foto del km
+  const _borrarFotos = new Set();      // ids de remito_fotos a eliminar
+
+  const fotos = r.remito_fotos || [];
+
+  const el = document.createElement('div');
+  el.className = 'confirm-overlay';
+  el.innerHTML = `
+    <div class="confirm-box edit-remito-box">
+      <div class="confirm-title">Editar remito</div>
+      <div class="confirm-sub">Chofer: <b>${r.choferes?.nombre || '—'}</b></div>
+
+      <div class="edit-scroll">
+        <div class="form-row-2">
+          <div class="field">
+            <label class="field-label">Fecha de carga</label>
+            <input type="date" id="e-fecha" class="inp" value="${r.fecha_carga || ''}">
+          </div>
+          <div class="field">
+            <label class="field-label">Litros</label>
+            <input type="number" id="e-litros" class="inp" value="${r.litros ?? ''}" step="0.1" min="0">
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">N° de remito</label>
+          <input type="text" id="e-numero" class="inp" value="${(r.numero || '').replace(/"/g,'&quot;')}" maxlength="40">
+        </div>
+
+        <div class="field">
+          <label class="field-label">Kilómetros</label>
+          <input type="number" id="e-km" class="inp" value="${r.km ?? ''}" step="1" min="0">
+        </div>
+
+        <div class="form-row-2">
+          <div class="field">
+            <label class="field-label">Destino ida</label>
+            <input type="text" id="e-ida" class="inp" value="${(r.destino_ida || '').replace(/"/g,'&quot;')}">
+          </div>
+          <div class="field">
+            <label class="field-label">Destino vuelta</label>
+            <input type="text" id="e-vuelta" class="inp" value="${(r.destino_vuelta || '').replace(/"/g,'&quot;')}">
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Comentarios</label>
+          <textarea id="e-comentarios" class="inp inp-ta" rows="2">${r.comentarios || ''}</textarea>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Foto del kilómetro</label>
+          <div id="e-km-preview" class="foto-previews"></div>
+          <label class="foto-btn foto-btn-cam">
+            <input type="file" id="e-foto-km" accept="image/*" class="hidden">
+            📷 ${r.foto_km_url ? 'Reemplazar foto del km' : 'Agregar foto del km'}
+          </label>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Fotos del remito</label>
+          <div id="e-fotos-existentes" class="foto-previews"></div>
+          <div id="e-fotos-nuevas" class="foto-previews"></div>
+          <label class="foto-btn foto-btn-cam">
+            <input type="file" id="e-fotos-add" accept="image/*" multiple class="hidden">
+            📷 Agregar fotos
+          </label>
+        </div>
+      </div>
+
+      <div class="confirm-btns" style="margin-top:14px">
+        <button class="btn btn-ghost" id="e-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="e-save">Guardar cambios</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const close = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); };
+
+  // ── Preview de la foto del km ──
+  const renderKmPreview = () => {
+    const box = el.querySelector('#e-km-preview');
+    let src = null;
+    if (_kmReemplazo) src = URL.createObjectURL(_kmReemplazo);
+    else if (r.foto_km_url) src = r.foto_km_url;
+    box.innerHTML = src
+      ? `<div class="foto-preview-item"><img src="${src}" alt="km">${_kmReemplazo ? '<span class="foto-km-badge">NUEVA</span>' : ''}</div>`
+      : '<span class="edit-empty-note">Sin foto del km</span>';
+  };
+
+  // ── Preview de fotos existentes (con opción de borrar) ──
+  const renderExistentes = () => {
+    const box = el.querySelector('#e-fotos-existentes');
+    const visibles = fotos.filter(f => !_borrarFotos.has(f.id ?? f.storage_url));
+    if (!visibles.length && !fotos.length) { box.innerHTML = '<span class="edit-empty-note">Sin fotos</span>'; return; }
+    box.innerHTML = fotos.map(f => {
+      const key = f.id ?? f.storage_url;
+      const marcada = _borrarFotos.has(key);
+      return `
+        <div class="foto-preview-item ${marcada ? 'foto-tobedeleted' : ''}">
+          <img src="${f.storage_url}" alt="foto">
+          <button class="foto-remove" data-key="${key}">${marcada ? '↩' : '✕'}</button>
+        </div>`;
+    }).join('');
+    box.querySelectorAll('.foto-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.key;
+        if (_borrarFotos.has(key)) _borrarFotos.delete(key); else _borrarFotos.add(key);
+        renderExistentes();
+      });
+    });
+  };
+
+  // ── Preview de fotos nuevas (aún sin subir) ──
+  const renderNuevas = () => {
+    const box = el.querySelector('#e-fotos-nuevas');
+    box.innerHTML = _nuevasFotos.map((f, i) => `
+      <div class="foto-preview-item">
+        <img src="${URL.createObjectURL(f)}" alt="nueva">
+        <span class="foto-km-badge">NUEVA</span>
+        <button class="foto-remove" data-idx="${i}">✕</button>
+      </div>`).join('');
+    box.querySelectorAll('.foto-remove').forEach(btn => {
+      btn.addEventListener('click', () => { _nuevasFotos.splice(+btn.dataset.idx, 1); renderNuevas(); });
+    });
+  };
+
+  renderKmPreview();
+  renderExistentes();
+  renderNuevas();
+
+  el.querySelector('#e-foto-km').addEventListener('change', function() {
+    if (this.files[0]) { _kmReemplazo = this.files[0]; this.value = ''; renderKmPreview(); }
+  });
+  el.querySelector('#e-fotos-add').addEventListener('change', function() {
+    _nuevasFotos = [..._nuevasFotos, ...Array.from(this.files)];
+    this.value = '';
+    renderNuevas();
+  });
+
+  el.querySelector('#e-cancel').addEventListener('click', close);
+  el.addEventListener('click', e => { if (e.target === el) close(); });
+
+  el.querySelector('#e-save').addEventListener('click', async () => {
+    const btn = el.querySelector('#e-save');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+
+    try {
+      // 1) Actualizar campos de texto/número
+      const litrosVal = parseFloat(el.querySelector('#e-litros').value);
+      const kmVal     = parseInt(el.querySelector('#e-km').value, 10);
+      const update = {
+        fecha_carga:    el.querySelector('#e-fecha').value || r.fecha_carga,
+        numero:         el.querySelector('#e-numero').value.trim() || null,
+        litros:         isNaN(litrosVal) ? null : litrosVal,
+        km:             isNaN(kmVal) ? null : kmVal,
+        destino_ida:    el.querySelector('#e-ida').value.trim() || null,
+        destino_vuelta: el.querySelector('#e-vuelta').value.trim() || null,
+        comentarios:    el.querySelector('#e-comentarios').value.trim() || null,
+      };
+      const { error: uErr } = await sb.from('remitos').update(update).eq('id', r.id);
+      if (uErr) throw uErr;
+
+      // 2) Reemplazar foto del km (si se eligió una nueva)
+      if (_kmReemplazo) {
+        btn.textContent = 'Subiendo foto km...';
+        const ext  = (_kmReemplazo.type === 'image/png') ? 'png' : 'jpg';
+        const path = `${r.chofer_id}/${r.id}/km_${Date.now()}.${ext}`;
+        const url  = await uploadFoto(_kmReemplazo, path);
+        await sb.from('remitos').update({ foto_km_url: url }).eq('id', r.id);
+      }
+
+      // 3) Borrar fotos marcadas
+      if (_borrarFotos.size) {
+        const aBorrar = fotos.filter(f => _borrarFotos.has(f.id ?? f.storage_url));
+        for (const f of aBorrar) {
+          if (f.id) await sb.from('remito_fotos').delete().eq('id', f.id);
+          else      await sb.from('remito_fotos').delete().eq('storage_url', f.storage_url);
+        }
+      }
+
+      // 4) Subir fotos nuevas
+      for (let i = 0; i < _nuevasFotos.length; i++) {
+        btn.textContent = `Subiendo foto ${i + 1}/${_nuevasFotos.length}...`;
+        const file = _nuevasFotos[i];
+        const ext  = (file.type === 'image/png') ? 'png' : 'jpg';
+        const path = `${r.chofer_id}/${r.id}/${Date.now()}_${i}.${ext}`;
+        const url  = await uploadFoto(file, path);
+        await sb.from('remito_fotos').insert({ remito_id: r.id, storage_url: url });
+      }
+
+      toast('Remito actualizado ✓');
+      close();
+      loadAdminContent();
+    } catch (e) {
+      console.error('Error al editar remito:', e);
+      toast(`Error al guardar: ${e.message || 'intentá de nuevo'}`, 'err');
+      btn.disabled = false; btn.textContent = 'Guardar cambios';
+    }
   });
 }
 

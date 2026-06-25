@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v28 · 2026-06-03';
+const APP_VERSION = 'v29 · 2026-06-22';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -64,6 +64,29 @@ function toast(msg, type = 'ok') {
 
 function setLoading(msg = 'Cargando...') {
   app().innerHTML = `<div class="loading-screen"><div class="spinner"></div><p>${msg}</p></div>`;
+}
+
+// Formatea litros: sin decimales si es entero, con 1 decimal si no.
+const fmtLitros = n => { n = parseFloat(n) || 0; return n % 1 === 0 ? n : n.toFixed(1); };
+
+// =====================================================
+// ESTADO DE PAGO (derivado de litros) — pago parcial
+// =====================================================
+function litrosTotal(r)     { return Math.max(0, parseFloat(r.litros) || 0); }
+function litrosPagadosOf(r) { return Math.max(0, parseFloat(r.litros_pagados) || 0); }
+
+// Litros que todavía se deben de un remito.
+function litrosPendientes(r) {
+  if (r.pagado) return 0;
+  return Math.max(0, litrosTotal(r) - litrosPagadosOf(r));
+}
+
+// 'pendiente' | 'parcial' | 'pagado'
+function estadoPago(r) {
+  const tot = litrosTotal(r), pag = litrosPagadosOf(r);
+  if (r.pagado || (tot > 0 && pag >= tot)) return 'pagado';
+  if (pag > 0) return 'parcial';
+  return 'pendiente';
 }
 
 // =====================================================
@@ -711,6 +734,9 @@ async function renderAdmin() {
         <button class="tab-btn ${S.adminTab === 'todos' ? 'active' : ''}" data-tab="todos">
           Todos
         </button>
+        <button class="tab-btn ${S.adminTab === 'historial' ? 'active' : ''}" data-tab="historial">
+          Historial
+        </button>
       </div>
       <main class="admin-main" id="admin-main">
         <div class="loading-inline">Cargando...</div>
@@ -761,13 +787,18 @@ async function loadAdminContent() {
   if (!main) return;
   main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
 
+  // El Historial tiene su propio flujo (calcula viajes sobre todo el histórico).
+  if (S.adminTab === 'historial') return loadHistorial(main);
+
   let query = sb
     .from('remitos')
     .select('*, choferes(nombre), remito_fotos(storage_url)')
     .order('fecha_carga', { ascending: false })
     .order('created_at', { ascending: false });
 
-  if (S.adminTab === 'pendientes') query = query.eq('pagado', false);
+  // Pendientes ahora muestra todo lo NO archivado (pendientes + parciales +
+  // pagados-no-archivados). Los pagados solo se van con "Archivar pagados".
+  if (S.adminTab === 'pendientes') query = query.eq('archivado', false);
   if (S.filtroChofer)              query = query.eq('chofer_id', S.filtroChofer);
   if (S.filtroMes) {
     const [y, m] = S.filtroMes.split('-');
@@ -776,7 +807,7 @@ async function loadAdminContent() {
     query = query.gte('fecha_carga', from).lte('fecha_carga', to);
   }
 
-  const [{ data: remitos, error: rErr }, { data: choferes }] = await Promise.all([
+  const [{ data: remitosRaw, error: rErr }, { data: choferes }] = await Promise.all([
     query,
     sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre'),
   ]);
@@ -786,15 +817,21 @@ async function loadAdminContent() {
     return;
   }
 
-  // Cache de remitos para el editor (se busca por id desde el botón "Editar")
+  // En "Todos" separamos activos de archivados: los archivados van en una
+  // sección colapsable al final (NO se pierden, siguen en el Historial).
+  const all        = remitosRaw || [];
+  const activos    = S.adminTab === 'todos' ? all.filter(r => !r.archivado) : all;
+  const archivados = S.adminTab === 'todos' ? all.filter(r =>  r.archivado) : [];
+
+  // Cache para el editor (incluye activos y archivados)
   _remitosCache = {};
-  (remitos || []).forEach(r => { _remitosCache[r.id] = r; });
+  all.forEach(r => { _remitosCache[r.id] = r; });
 
   let html = '';
 
-  // Deuda de combustible (solo en tab "pendientes")
+  // Deuda de combustible (tab "pendientes") — resta lo ya pagado (parcial).
   if (S.adminTab === 'pendientes') {
-    const totalLitros = (remitos || []).reduce((a, r) => a + (r.litros || 0), 0);
+    const totalLitros = activos.reduce((a, r) => a + litrosPendientes(r), 0);
     const deuda = totalLitros * S.precioLitro;
     const fmtARS = n => '$ ' + Math.round(n).toLocaleString('es-AR');
     html += `
@@ -808,18 +845,18 @@ async function loadAdminContent() {
         </div>
         <div class="deuda-amount">${fmtARS(deuda)}</div>
         <div class="deuda-detail">
-          <b>${totalLitros.toLocaleString('es-AR')}</b> L pendientes &times; <b>${fmtARS(S.precioLitro)}</b>/L
+          <b>${fmtLitros(totalLitros)}</b> L pendientes &times; <b>${fmtARS(S.precioLitro)}</b>/L
         </div>
       </div>
     `;
   }
 
   // Stats (solo en tab "todos")
-  if (S.adminTab === 'todos' && remitos) {
+  if (S.adminTab === 'todos') {
     const mesKey  = today().slice(0, 7);
-    const rMes    = remitos.filter(r => r.fecha_carga?.startsWith(mesKey));
+    const rMes    = activos.filter(r => r.fecha_carga?.startsWith(mesKey));
     const litros  = rMes.reduce((a, r) => a + (r.litros || 0), 0);
-    const pend    = remitos.filter(r => !r.pagado).length;
+    const pend    = activos.filter(r => estadoPago(r) !== 'pagado').length;
     html += `
       <div class="stats-row">
         <div class="stat-card">
@@ -838,116 +875,262 @@ async function loadAdminContent() {
     `;
   }
 
-  // Filtros + acción peligrosa (solo en tab "todos")
+  // Filtros + acción de archivar (solo en tab "todos")
   if (S.adminTab === 'todos') {
-    const opts = (choferes || [])
-      .map(c => `<option value="${c.id}" ${S.filtroChofer === c.id ? 'selected' : ''}>${c.nombre}</option>`)
-      .join('');
-    const hasFilter = S.filtroChofer || S.filtroMes;
-    const selected = (choferes || []).find(c => c.id === S.filtroChofer);
-    const choferLabel = selected ? selected.nombre : 'Todos los choferes';
+    html += filtrosHTML(choferes);
     html += `
-      <div class="filtros-card">
-        <div class="filtros-head">
-          <span class="filtros-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-            Filtros
-          </span>
-          ${hasFilter ? `<button id="btn-limpiar" class="filtros-clear">✕ Limpiar</button>` : ''}
-        </div>
-        <div class="filtros-row">
-          <div class="filtro-field">
-            <label class="filtro-label">Chofer</label>
-            <div class="cdd" id="cdd-chofer">
-              <button type="button" class="cdd-trigger">
-                <span class="cdd-text ${!selected ? 'cdd-placeholder' : ''}">${choferLabel}</span>
-                <svg class="cdd-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-              </button>
-              <div class="cdd-menu hidden">
-                <button class="cdd-opt ${!S.filtroChofer ? 'is-active' : ''}" data-value="">Todos los choferes</button>
-                ${(choferes || []).map(c => `
-                  <button class="cdd-opt ${S.filtroChofer === c.id ? 'is-active' : ''}" data-value="${c.id}">${c.nombre}</button>
-                `).join('')}
-              </div>
-            </div>
-          </div>
-          <div class="filtro-field">
-            <label class="filtro-label">Mes</label>
-            <div class="cdd" id="mdd-mes">
-              <button type="button" class="cdd-trigger">
-                <span class="cdd-text ${!S.filtroMes ? 'cdd-placeholder' : ''}">${formatMesLabel(S.filtroMes)}</span>
-                <svg class="cdd-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              </button>
-              <div class="cdd-menu mdd-menu hidden">
-                <div class="mdd-year-nav">
-                  <button type="button" class="mdd-year-btn" data-dir="-1">‹</button>
-                  <span class="mdd-year">${S.filtroMes ? S.filtroMes.split('-')[0] : new Date().getFullYear()}</span>
-                  <button type="button" class="mdd-year-btn" data-dir="1">›</button>
-                </div>
-                <div class="mdd-months">
-                  ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((m,i) =>
-                    `<button type="button" class="mdd-month" data-m="${String(i+1).padStart(2,'0')}">${m}</button>`
-                  ).join('')}
-                </div>
-                <div class="mdd-actions">
-                  <button type="button" class="mdd-action mdd-clear">Limpiar</button>
-                  <button type="button" class="mdd-action mdd-today">Este mes</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
       <div class="admin-actions-row">
-        <button id="btn-eliminar-pagados" class="btn btn-danger btn-sm">🗑 Eliminar pagados</button>
+        <button id="btn-archivar-pagados" class="btn btn-ghost btn-sm">📦 Archivar pagados</button>
       </div>
     `;
   }
 
-  // Lista (con separadores de consumo entre cargas consecutivas del mismo chofer)
-  if (!remitos || remitos.length === 0) {
-    html += `<p class="empty-msg">${S.adminTab === 'pendientes' ? '✓ Sin remitos pendientes de pago' : 'No hay remitos cargados'}</p>`;
+  // Lista de activos (con separadores de consumo entre cargas consecutivas)
+  if (!activos.length) {
+    html += `<p class="empty-msg">${S.adminTab === 'pendientes' ? '✓ Sin remitos pendientes' : 'No hay remitos cargados'}</p>`;
   } else {
-    const pieces = [];
-    for (let i = 0; i < remitos.length; i++) {
-      pieces.push(renderRemitoCard(remitos[i]));
-      if (i + 1 < remitos.length) {
-        // remitos[i] es MÁS NUEVO que remitos[i+1] (orden desc por fecha_carga)
-        const sep = renderConsumoSeparator(remitos[i], remitos[i + 1]);
-        if (sep) pieces.push(sep);
-      }
-    }
-    html += pieces.join('');
+    html += renderRemitoList(activos);
+  }
+
+  // Sección colapsable de archivados (solo en tab "todos")
+  if (S.adminTab === 'todos' && archivados.length) {
+    html += `
+      <details class="archivados-block">
+        <summary class="archivados-summary">📦 Archivados (${archivados.length})</summary>
+        <div class="archivados-list">${renderRemitoList(archivados)}</div>
+      </details>
+    `;
   }
 
   main.innerHTML = html;
 
-  // Bind filtros
+  // Bind filtros + acciones
   bindChoferDropdown();
   bindMesPicker();
   $('btn-limpiar')?.addEventListener('click', () => { S.filtroChofer = ''; S.filtroMes = ''; loadAdminContent(); });
-  $('btn-eliminar-pagados')?.addEventListener('click', eliminarPagados);
+  $('btn-archivar-pagados')?.addEventListener('click', archivarPagados);
   $('btn-edit-precio')?.addEventListener('click', showPrecioEditor);
+  bindAdminListEvents(main);
+}
 
-  // Bind "marcar pagado" / "marcar pendiente"
-  main.querySelectorAll('.btn-marcar-pagado').forEach(b => {
-    b.addEventListener('click', () => marcarPagado(b.dataset.id));
-  });
-  main.querySelectorAll('.btn-marcar-pendiente').forEach(b => {
-    b.addEventListener('click', () => marcarPendiente(b.dataset.id));
-  });
+// Markup de la card de filtros (chofer + mes). Reutilizado por Todos e Historial.
+function filtrosHTML(choferes) {
+  const hasFilter = S.filtroChofer || S.filtroMes;
+  const selected = (choferes || []).find(c => c.id === S.filtroChofer);
+  const choferLabel = selected ? selected.nombre : 'Todos los choferes';
+  return `
+    <div class="filtros-card">
+      <div class="filtros-head">
+        <span class="filtros-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+          Filtros
+        </span>
+        ${hasFilter ? `<button id="btn-limpiar" class="filtros-clear">✕ Limpiar</button>` : ''}
+      </div>
+      <div class="filtros-row">
+        <div class="filtro-field">
+          <label class="filtro-label">Chofer</label>
+          <div class="cdd" id="cdd-chofer">
+            <button type="button" class="cdd-trigger">
+              <span class="cdd-text ${!selected ? 'cdd-placeholder' : ''}">${choferLabel}</span>
+              <svg class="cdd-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="cdd-menu hidden">
+              <button class="cdd-opt ${!S.filtroChofer ? 'is-active' : ''}" data-value="">Todos los choferes</button>
+              ${(choferes || []).map(c => `
+                <button class="cdd-opt ${S.filtroChofer === c.id ? 'is-active' : ''}" data-value="${c.id}">${c.nombre}</button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+        <div class="filtro-field">
+          <label class="filtro-label">Mes</label>
+          <div class="cdd" id="mdd-mes">
+            <button type="button" class="cdd-trigger">
+              <span class="cdd-text ${!S.filtroMes ? 'cdd-placeholder' : ''}">${formatMesLabel(S.filtroMes)}</span>
+              <svg class="cdd-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </button>
+            <div class="cdd-menu mdd-menu hidden">
+              <div class="mdd-year-nav">
+                <button type="button" class="mdd-year-btn" data-dir="-1">‹</button>
+                <span class="mdd-year">${S.filtroMes ? S.filtroMes.split('-')[0] : new Date().getFullYear()}</span>
+                <button type="button" class="mdd-year-btn" data-dir="1">›</button>
+              </div>
+              <div class="mdd-months">
+                ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((m,i) =>
+                  `<button type="button" class="mdd-month" data-m="${String(i+1).padStart(2,'0')}">${m}</button>`
+                ).join('')}
+              </div>
+              <div class="mdd-actions">
+                <button type="button" class="mdd-action mdd-clear">Limpiar</button>
+                <button type="button" class="mdd-action mdd-today">Este mes</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
 
-  // Bind foto thumbnails
-  main.querySelectorAll('.foto-thumb').forEach(img => {
-    img.addEventListener('click', () => {
-      openLightbox(JSON.parse(img.dataset.urls), +img.dataset.idx);
-    });
-  });
+// Lista de cards con separadores de consumo entre cargas consecutivas.
+function renderRemitoList(remitos) {
+  const pieces = [];
+  for (let i = 0; i < remitos.length; i++) {
+    pieces.push(renderRemitoCard(remitos[i]));
+    if (i + 1 < remitos.length) {
+      // remitos[i] es MÁS NUEVO que remitos[i+1] (orden desc por fecha_carga)
+      const sep = renderConsumoSeparator(remitos[i], remitos[i + 1]);
+      if (sep) pieces.push(sep);
+    }
+  }
+  return pieces.join('');
+}
 
-  // Bind "editar remito"
-  main.querySelectorAll('.btn-edit-remito').forEach(b => {
-    b.addEventListener('click', () => showEditRemito(b.dataset.id));
-  });
+// Engancha los botones de cada card (pago, parcial, borrar, desarchivar, fotos, editar).
+function bindAdminListEvents(main) {
+  main.querySelectorAll('.btn-marcar-pagado').forEach(b =>
+    b.addEventListener('click', () => marcarPagado(b.dataset.id)));
+  main.querySelectorAll('.btn-marcar-pendiente').forEach(b =>
+    b.addEventListener('click', () => marcarPendiente(b.dataset.id)));
+  main.querySelectorAll('.btn-pago-parcial').forEach(b =>
+    b.addEventListener('click', () => showPagoParcial(b.dataset.id)));
+  main.querySelectorAll('.btn-completar-pago').forEach(b =>
+    b.addEventListener('click', () => completarPago(b.dataset.id)));
+  main.querySelectorAll('.btn-del-remito').forEach(b =>
+    b.addEventListener('click', () => eliminarRemito(b.dataset.id)));
+  main.querySelectorAll('.btn-desarchivar').forEach(b =>
+    b.addEventListener('click', () => desarchivarRemito(b.dataset.id)));
+  main.querySelectorAll('.foto-thumb').forEach(img =>
+    img.addEventListener('click', () => openLightbox(JSON.parse(img.dataset.urls), +img.dataset.idx)));
+  main.querySelectorAll('.btn-edit-remito').forEach(b =>
+    b.addEventListener('click', () => showEditRemito(b.dataset.id)));
+}
+
+// =====================================================
+// HISTORIAL — consumo L/100km por viaje (carga a carga)
+// =====================================================
+
+// Arma un "viaje" por cada par de cargas consecutivas del mismo chofer.
+// distancia = km(nuevo) − km(anterior); litros = los cargados en el nuevo.
+function computeViajes(remitos) {
+  const byChofer = {};
+  for (const r of (remitos || [])) {
+    if (r.km == null) continue;
+    (byChofer[r.chofer_id] = byChofer[r.chofer_id] || []).push(r);
+  }
+  const viajes = [];
+  for (const cid in byChofer) {
+    const list = byChofer[cid].slice().sort((a, b) => a.km - b.km);
+    for (let i = 1; i < list.length; i++) {
+      const older = list[i - 1], newer = list[i];
+      const distance = newer.km - older.km;
+      if (distance <= 0) continue;
+      if (!newer.litros || newer.litros <= 0) continue;
+      viajes.push({
+        chofer:     newer.choferes?.nombre || older.choferes?.nombre || 'Desconocido',
+        fechaDesde: older.fecha_carga,
+        fechaHasta: newer.fecha_carga,
+        km:         distance,
+        litros:     newer.litros,
+        l100:       (newer.litros / distance) * 100,
+      });
+    }
+  }
+  // Más recientes primero (por fecha de llegada).
+  viajes.sort((a, b) => (a.fechaHasta < b.fechaHasta ? 1 : a.fechaHasta > b.fechaHasta ? -1 : 0));
+  return viajes;
+}
+
+async function loadHistorial(main) {
+  // Trae TODO el histórico (incluye archivados) para que el consumo no se corte
+  // en los bordes de mes. El filtro de mes se aplica sobre el viaje, después.
+  let q = sb.from('remitos').select('chofer_id, fecha_carga, km, litros, choferes(nombre)');
+  if (S.filtroChofer) q = q.eq('chofer_id', S.filtroChofer);
+
+  const [{ data: remitos, error }, { data: choferes }] = await Promise.all([
+    q,
+    sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre'),
+  ]);
+
+  if (error) {
+    main.innerHTML = `<p class="empty-msg">Error al cargar el historial. Verificá tu conexión.</p>`;
+    return;
+  }
+
+  let viajes = computeViajes(remitos || []);
+  if (S.filtroMes) viajes = viajes.filter(v => (v.fechaHasta || '').startsWith(S.filtroMes));
+
+  let html = filtrosHTML(choferes);
+
+  if (!viajes.length) {
+    html += `<p class="empty-msg">No hay viajes para mostrar todavía</p>`;
+  } else {
+    const totKm = viajes.reduce((a, v) => a + v.km, 0);
+    const totL  = viajes.reduce((a, v) => a + v.litros, 0);
+    const prom  = totKm > 0 ? (totL / totKm) * 100 : 0;
+    html += `
+      <div class="hist-summary">
+        <div class="hist-sum-cell">
+          <span class="hist-sum-val">${totKm.toLocaleString('es-AR')}</span>
+          <span class="hist-sum-lbl">km totales</span>
+        </div>
+        <div class="hist-sum-cell">
+          <span class="hist-sum-val">${fmtLitros(totL)}</span>
+          <span class="hist-sum-lbl">litros</span>
+        </div>
+        <div class="hist-sum-cell hist-sum-hl">
+          <span class="hist-sum-val">${prom.toFixed(1)}</span>
+          <span class="hist-sum-lbl">L/100km prom.</span>
+        </div>
+      </div>
+    `;
+    html += `<div class="hist-list">${viajes.map(renderViaje).join('')}</div>`;
+  }
+
+  main.innerHTML = html;
+  bindChoferDropdown();
+  bindMesPicker();
+  $('btn-limpiar')?.addEventListener('click', () => { S.filtroChofer = ''; S.filtroMes = ''; loadAdminContent(); });
+}
+
+// Fila de viaje. Colapsada muestra SOLO el consumo L/100km; al desplegar
+// (native <details>) aparecen km recorridos y litros.
+function renderViaje(v) {
+  const iconRoute = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21L8 3"/><path d="M21 21L16 3"/><path d="M12 5v2"/><path d="M12 11v2"/><path d="M12 17v2"/></svg>`;
+  const iconFuel  = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M3 22h14"/><path d="M4 13h12"/><path d="M16 8h1a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg>`;
+  const iconGauge = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/><circle cx="12" cy="14" r="1.2" fill="currentColor"/></svg>`;
+  return `
+    <details class="viaje-row">
+      <summary class="viaje-summary">
+        <span class="viaje-chofer">${v.chofer}</span>
+        <span class="viaje-l100">${v.l100.toFixed(1)}<small>L/100km</small></span>
+        <span class="viaje-chev">▾</span>
+      </summary>
+      <div class="viaje-detail">
+        <div class="consumo-header">
+          <span class="consumo-pill">VIAJE</span>
+          <span class="consumo-dates">${fmt(v.fechaDesde)} <span class="consumo-arrow">→</span> ${fmt(v.fechaHasta)}</span>
+        </div>
+        <div class="consumo-grid">
+          <div class="consumo-cell">
+            ${iconRoute}
+            <span class="consumo-value">${v.km.toLocaleString('es-AR')}<span class="consumo-unit">km</span></span>
+          </div>
+          <div class="consumo-vdiv"></div>
+          <div class="consumo-cell">
+            ${iconFuel}
+            <span class="consumo-value">${fmtLitros(v.litros)}<span class="consumo-unit">L</span></span>
+          </div>
+          <div class="consumo-vdiv"></div>
+          <div class="consumo-cell consumo-cell-hl">
+            ${iconGauge}
+            <span class="consumo-value">${v.l100.toFixed(1)}<span class="consumo-unit">L/100km</span></span>
+          </div>
+        </div>
+      </div>
+    </details>
+  `;
 }
 
 function renderRemitoCard(r) {
@@ -976,16 +1159,54 @@ function renderRemitoCard(r) {
   ).join('');
   const masTag  = fotos.length > 4 ? `<div class="foto-mas">+${fotos.length - 4}</div>` : '';
 
+  const estado = estadoPago(r);
+
+  // Badge de estado (3 estados)
+  const badge = estado === 'pagado'
+    ? `<span class="status-badge paid">✓ Pagado</span>`
+    : estado === 'parcial'
+      ? `<span class="status-badge partial">◐ ${fmtLitros(litrosPagadosOf(r))}/${fmtLitros(litrosTotal(r))} L</span>`
+      : `<span class="status-badge pending">Pendiente</span>`;
+
+  // Botón de borrado individual: solo en la pestaña "Todos"
+  const delBtn = S.adminTab === 'todos'
+    ? `<button class="btn-del-remito" data-id="${r.id}" title="Eliminar remito">🗑</button>`
+    : '';
+
+  // Acciones según estado / archivado
+  let acciones;
+  if (r.archivado) {
+    acciones = `<button class="btn btn-ghost btn-full mt-sm btn-desarchivar" data-id="${r.id}">↩ Desarchivar</button>`;
+  } else if (estado === 'parcial') {
+    acciones = `
+      <div class="pago-parcial-info">Pagado ${fmtLitros(litrosPagadosOf(r))} de ${fmtLitros(litrosTotal(r))} L · faltan ${fmtLitros(litrosPendientes(r))} L</div>
+      <div class="pago-actions mt-sm">
+        <button class="btn btn-pay btn-completar-pago" data-id="${r.id}">Completar pago</button>
+        <button class="btn btn-ghost btn-pago-parcial" data-id="${r.id}">Editar parcial</button>
+      </div>
+      <button class="btn btn-ghost btn-full mt-sm btn-marcar-pendiente" data-id="${r.id}">↩ Marcar pendiente</button>`;
+  } else if (estado === 'pagado') {
+    acciones = `<button class="btn btn-ghost btn-full mt-sm btn-marcar-pendiente" data-id="${r.id}">↩ Marcar como pendiente</button>`;
+  } else {
+    acciones = `
+      <div class="pago-actions mt-sm">
+        <button class="btn btn-pay btn-marcar-pagado" data-id="${r.id}">Marcar como pagado</button>
+        <button class="btn btn-ghost btn-pago-parcial" data-id="${r.id}">Pago parcial</button>
+      </div>`;
+  }
+
   return `
-    <div class="remito-card ${r.pagado ? 'card-pagado' : ''}">
+    <div class="remito-card ${estado === 'pagado' ? 'card-pagado' : ''} ${r.archivado ? 'card-archivado' : ''}">
       <div class="remito-card-header">
         <div class="remito-meta">
           <span class="chofer-chip">${nombre}</span>
           <span class="fecha-chip">${fmt(r.fecha_carga)}</span>
+          ${r.archivado ? `<span class="archivado-tag">Archivado</span>` : ''}
         </div>
         <div class="remito-header-actions">
           <button class="btn-edit-remito" data-id="${r.id}" title="Editar remito">✏ Editar</button>
-          <span class="status-badge ${r.pagado ? 'paid' : 'pending'}">${r.pagado ? '✓ Pagado' : 'Pendiente'}</span>
+          ${delBtn}
+          ${badge}
         </div>
       </div>
       <div class="remito-destinos">
@@ -1003,13 +1224,7 @@ function renderRemitoCard(r) {
           ${(kmThumb || thumbs) ? `<div class="fotos-row">${kmThumb}${thumbs}${masTag}</div>` : ''}
         </div>` : ''}
       ${r.pagado && r.fecha_pago ? `<div class="fecha-pago-info">Pagado el ${fmt(r.fecha_pago)}</div>` : ''}
-      ${!r.pagado ? `
-        <button class="btn btn-pay btn-full mt-sm btn-marcar-pagado" data-id="${r.id}">
-          Marcar como pagado
-        </button>` : `
-        <button class="btn btn-ghost btn-full mt-sm btn-marcar-pendiente" data-id="${r.id}">
-          ↩ Marcar como pendiente
-        </button>`}
+      ${acciones}
     </div>
   `;
 }
@@ -1057,21 +1272,80 @@ function renderConsumoSeparator(newer, older) {
 }
 
 function marcarPagado(id) {
-  showConfirm('¿Marcar como pagado?', 'Esta acción quedará registrada con la fecha de hoy.', 'Confirmar', async () => {
-    const { error } = await sb.from('remitos').update({ pagado: true, fecha_pago: today() }).eq('id', id);
+  showConfirm('¿Marcar como pagado?', 'Se registra el pago total con la fecha de hoy.', 'Confirmar', async () => {
+    const r = _remitosCache[id];
+    const upd = { pagado: true, fecha_pago: today() };
+    if (r) upd.litros_pagados = litrosTotal(r);   // pago total = todos los litros
+    const { error } = await sb.from('remitos').update(upd).eq('id', id);
     if (error) { toast('Error al actualizar', 'err'); return; }
     toast('Remito marcado como pagado ✓');
     loadAdminContent();
   });
 }
 
+// Completar un pago parcial → pasa a pagado al 100%.
+async function completarPago(id) {
+  const r = _remitosCache[id];
+  const upd = { pagado: true, fecha_pago: today() };
+  if (r) upd.litros_pagados = litrosTotal(r);
+  const { error } = await sb.from('remitos').update(upd).eq('id', id);
+  if (error) { toast('Error al actualizar', 'err'); return; }
+  toast('Pago completado ✓');
+  loadAdminContent();
+}
+
 function marcarPendiente(id) {
-  showConfirm('¿Marcar como pendiente?', 'El remito vuelve al estado pendiente de pago.', 'Confirmar', async () => {
-    const { error } = await sb.from('remitos').update({ pagado: false, fecha_pago: null }).eq('id', id);
+  showConfirm('¿Marcar como pendiente?', 'Vuelve a pendiente y se borra el pago registrado.', 'Confirmar', async () => {
+    const { error } = await sb.from('remitos')
+      .update({ pagado: false, fecha_pago: null, litros_pagados: 0 }).eq('id', id);
     if (error) { toast('Error al actualizar', 'err'); return; }
     toast('Remito marcado como pendiente ✓');
     loadAdminContent();
   });
+}
+
+// Modal de pago parcial: el admin ingresa cuántos LITROS se pagaron.
+function showPagoParcial(id) {
+  const r = _remitosCache[id];
+  if (!r) { toast('No se encontró el remito', 'err'); return; }
+  const total  = litrosTotal(r);
+  const actual = litrosPagadosOf(r);
+  const el = document.createElement('div');
+  el.className = 'confirm-overlay';
+  el.innerHTML = `
+    <div class="confirm-box">
+      <div class="confirm-title">Pago parcial</div>
+      <div class="confirm-sub">Total del remito: <b>${fmtLitros(total)} L</b>. Ingresá cuántos litros se pagaron.</div>
+      <div class="field">
+        <label class="field-label">Litros pagados</label>
+        <input type="number" id="parcial-input" class="inp" value="${actual || ''}"
+               step="0.1" min="0" max="${total}" placeholder="Ej: 50" autocomplete="off" inputmode="decimal">
+      </div>
+      <div class="confirm-btns" style="margin-top:14px">
+        <button class="btn btn-ghost" id="parcial-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="parcial-ok">Guardar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const close = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); };
+  el.querySelector('#parcial-cancel').addEventListener('click', close);
+  el.addEventListener('click', e => { if (e.target === el) close(); });
+  el.querySelector('#parcial-ok').addEventListener('click', async () => {
+    let v = parseFloat(el.querySelector('#parcial-input').value);
+    if (isNaN(v) || v < 0) v = 0;
+    if (total > 0 && v > total) v = total;
+    const fully = total > 0 && v >= total;
+    const upd = { litros_pagados: v, pagado: fully };
+    upd.fecha_pago = fully ? today() : null;
+    const { error } = await sb.from('remitos').update(upd).eq('id', id);
+    if (error) { toast('Error al guardar', 'err'); return; }
+    toast(fully ? 'Pago completado ✓' : `Pago parcial de ${fmtLitros(v)} L guardado ✓`);
+    close();
+    loadAdminContent();
+  });
+  setTimeout(() => el.querySelector('#parcial-input').focus(), 100);
 }
 
 // Cache de remitos cargados (para el editor del admin)
@@ -1113,9 +1387,15 @@ function showEditRemito(id) {
           <input type="text" id="e-numero" class="inp" value="${(r.numero || '').replace(/"/g,'&quot;')}" maxlength="40">
         </div>
 
-        <div class="field">
-          <label class="field-label">Kilómetros</label>
-          <input type="number" id="e-km" class="inp" value="${r.km ?? ''}" step="1" min="0">
+        <div class="form-row-2">
+          <div class="field">
+            <label class="field-label">Kilómetros</label>
+            <input type="number" id="e-km" class="inp" value="${r.km ?? ''}" step="1" min="0">
+          </div>
+          <div class="field">
+            <label class="field-label">Litros pagados <span style="font-size:0.75em;font-weight:400;opacity:0.7">(parcial)</span></label>
+            <input type="number" id="e-litros-pagados" class="inp" value="${(r.litros_pagados ?? 0) || ''}" step="0.1" min="0" placeholder="0">
+          </div>
         </div>
 
         <div class="form-row-2">
@@ -1236,6 +1516,14 @@ function showEditRemito(id) {
       // 1) Actualizar campos de texto/número
       const litrosVal = parseFloat(el.querySelector('#e-litros').value);
       const kmVal     = parseInt(el.querySelector('#e-km').value, 10);
+
+      // Pago parcial (litros): se clampa al total y recalcula el estado pagado.
+      const totL = isNaN(litrosVal) ? 0 : litrosVal;
+      let lpVal = parseFloat(el.querySelector('#e-litros-pagados').value);
+      if (isNaN(lpVal) || lpVal < 0) lpVal = 0;
+      if (totL > 0 && lpVal > totL) lpVal = totL;
+      const fully = totL > 0 && lpVal >= totL;
+
       const update = {
         fecha_carga:    el.querySelector('#e-fecha').value || r.fecha_carga,
         numero:         el.querySelector('#e-numero').value.trim() || null,
@@ -1244,6 +1532,9 @@ function showEditRemito(id) {
         destino_ida:    el.querySelector('#e-ida').value.trim() || null,
         destino_vuelta: el.querySelector('#e-vuelta').value.trim() || null,
         comentarios:    el.querySelector('#e-comentarios').value.trim() || null,
+        litros_pagados: lpVal,
+        pagado:         fully,
+        fecha_pago:     fully ? (r.fecha_pago || today()) : null,
       };
       const { error: uErr } = await sb.from('remitos').update(update).eq('id', r.id);
       if (uErr) throw uErr;
@@ -1287,33 +1578,53 @@ function showEditRemito(id) {
   });
 }
 
-async function eliminarPagados() {
-  // Contar primero para mostrar en el confirm
-  const { count, error: cErr } = await sb
-    .from('remitos').select('*', { count: 'exact', head: true }).eq('pagado', true);
-  if (cErr) { toast('Error al consultar remitos pagados', 'err'); return; }
-  if (!count) { toast('No hay remitos pagados para eliminar', 'warn'); return; }
+// "Archivar pagados": saca de Pendientes los remitos pagados al 100%, SIN borrarlos.
+// Quedan disponibles en "Todos" (sección Archivados) y en el Historial.
+async function archivarPagados() {
+  const { data, error: cErr } = await sb
+    .from('remitos').select('id, litros, litros_pagados, pagado').eq('archivado', false);
+  if (cErr) { toast('Error al consultar remitos', 'err'); return; }
 
-  const plural = count !== 1;
+  const ids = (data || []).filter(r => estadoPago(r) === 'pagado').map(r => r.id);
+  if (!ids.length) { toast('No hay remitos pagados para archivar', 'warn'); return; }
+
+  const plural = ids.length !== 1;
   showConfirm(
-    `¿Eliminar ${count} remito${plural ? 's' : ''} pagado${plural ? 's' : ''}?`,
-    'Esta acción no se puede deshacer. Se borran también las fotos asociadas.',
+    `¿Archivar ${ids.length} remito${plural ? 's' : ''} pagado${plural ? 's' : ''}?`,
+    'NO se borran: salen de Pendientes pero siguen en "Todos" y en el Historial. Podés desarchivarlos cuando quieras.',
+    'Archivar',
+    async () => {
+      const { error } = await sb.from('remitos').update({ archivado: true }).in('id', ids);
+      if (error) { toast(`Error al archivar: ${error.message}`, 'err'); return; }
+      toast(`${ids.length} remito${plural ? 's' : ''} archivado${plural ? 's' : ''} ✓`);
+      loadAdminContent();
+    }
+  );
+}
+
+// Desarchivar un remito (vuelve a Pendientes/Todos).
+async function desarchivarRemito(id) {
+  const { error } = await sb.from('remitos').update({ archivado: false }).eq('id', id);
+  if (error) { toast('Error al desarchivar', 'err'); return; }
+  toast('Remito desarchivado ✓');
+  loadAdminContent();
+}
+
+// Borrado individual de un remito (solo en "Todos", con confirmación).
+// Este SÍ borra de verdad — y por lo tanto desaparece también del Historial.
+function eliminarRemito(id) {
+  const r = _remitosCache[id];
+  const quien = r?.choferes?.nombre ? ` de ${r.choferes.nombre}` : '';
+  showConfirm(
+    '¿Eliminar este remito?',
+    `Se borra el remito${quien} y sus fotos. Esta acción no se puede deshacer.`,
     'Eliminar',
     async () => {
-      // 1) Obtener IDs de los pagados
-      const { data: paid, error: pErr } = await sb.from('remitos').select('id').eq('pagado', true);
-      if (pErr) { toast(`Error: ${pErr.message}`, 'err'); return; }
-      const ids = paid.map(r => r.id);
-
-      // 2) Borrar registros de fotos (FK)
-      const { error: fErr } = await sb.from('remito_fotos').delete().in('remito_id', ids);
+      const { error: fErr } = await sb.from('remito_fotos').delete().eq('remito_id', id);
       if (fErr) { toast(`Error al borrar fotos: ${fErr.message}`, 'err'); return; }
-
-      // 3) Borrar los remitos
-      const { error: rErr } = await sb.from('remitos').delete().in('id', ids);
-      if (rErr) { toast(`Error al borrar remitos: ${rErr.message}`, 'err'); return; }
-
-      toast(`${count} remito${plural ? 's' : ''} eliminado${plural ? 's' : ''} ✓`);
+      const { error: rErr } = await sb.from('remitos').delete().eq('id', id);
+      if (rErr) { toast(`Error al borrar remito: ${rErr.message}`, 'err'); return; }
+      toast('Remito eliminado ✓');
       loadAdminContent();
     }
   );

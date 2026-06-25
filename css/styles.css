@@ -847,6 +847,106 @@ input[type="month"].inp { cursor: pointer; }
   font-size: 0.92rem; color: var(--text-dark); line-height: 1.4;
 }
 
+/* ── Estado de pago: parcial ── */
+.status-badge.partial { background: #fdebd0; color: #9a5b00; border: 1px solid #e8b366; }
+
+/* Botones de pago en par (Marcar pagado / Pago parcial) */
+.pago-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pago-actions .btn { width: 100%; }
+
+.pago-parcial-info {
+  margin-top: 10px;
+  font-size: 0.84rem; font-weight: 600; color: var(--warn);
+  background: #fdf3e3; border: 1px solid #efcf9b;
+  padding: 7px 12px; border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+/* ── Borrar remito (solo en "Todos") ── */
+.btn-del-remito {
+  background: var(--color1); border: 1px solid var(--color3);
+  color: var(--danger); font-family: 'DM Sans', sans-serif;
+  font-size: 0.82rem; font-weight: 700; padding: 3px 9px;
+  border-radius: 20px; cursor: pointer; line-height: 1;
+  transition: all 0.16s;
+}
+.btn-del-remito:hover { background: var(--danger); color: white; border-color: var(--danger); }
+
+/* ── Archivados ── */
+.archivado-tag {
+  background: var(--color3); color: var(--text-mid);
+  font-size: 0.64rem; font-weight: 800; letter-spacing: 0.08em;
+  padding: 2px 8px; border-radius: 12px; text-transform: uppercase;
+}
+.card-archivado { opacity: 0.72; border-style: dashed; }
+
+.archivados-block {
+  background: var(--color2); border: 1px solid var(--color3);
+  border-radius: var(--radius); overflow: hidden;
+}
+.archivados-summary {
+  list-style: none; cursor: pointer; user-select: none;
+  padding: 13px 16px; font-size: 0.9rem; font-weight: 700; color: var(--text-mid);
+  display: flex; align-items: center; gap: 8px;
+}
+.archivados-summary::-webkit-details-marker { display: none; }
+.archivados-summary::after {
+  content: '▾'; margin-left: auto; transition: transform 0.2s; color: var(--color5);
+}
+.archivados-block[open] .archivados-summary::after { transform: rotate(180deg); }
+.archivados-list { padding: 0 12px 14px; display: flex; flex-direction: column; gap: 14px; }
+
+/* ── Historial ── */
+.hist-summary {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  align-items: center; gap: 6px;
+  background: linear-gradient(135deg, var(--text-dark) 0%, #1f1810 100%);
+  color: white; border-radius: var(--radius);
+  padding: 14px 12px; box-shadow: var(--shadow);
+}
+.hist-sum-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.hist-sum-val { font-size: 1.35rem; font-weight: 800; line-height: 1.05; }
+.hist-sum-lbl { font-size: 0.62rem; color: var(--color3); letter-spacing: 0.04em; }
+.hist-sum-hl .hist-sum-val { color: var(--color1); }
+.hist-sum-hl { position: relative; }
+.hist-sum-hl::before {
+  content: ''; position: absolute; left: -3px; top: 10%; bottom: 10%;
+  width: 1px; background: rgba(255,255,255,0.15);
+}
+
+.hist-list { display: flex; flex-direction: column; gap: 8px; }
+
+.viaje-row {
+  background: linear-gradient(135deg, #fffdf6 0%, var(--color1) 60%, var(--color2) 100%);
+  border: 1px solid var(--color3); border-radius: var(--radius);
+  box-shadow: 0 1px 6px rgba(58,46,30,0.05);
+  overflow: hidden;
+}
+.viaje-summary {
+  list-style: none; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 16px;
+}
+.viaje-summary::-webkit-details-marker { display: none; }
+.viaje-chofer {
+  background: var(--color5); color: white;
+  font-size: 0.78rem; font-weight: 700; padding: 3px 11px; border-radius: 20px;
+  flex-shrink: 0;
+}
+.viaje-l100 {
+  margin-left: auto;
+  font-size: 1.5rem; font-weight: 800; color: var(--color5);
+  display: inline-flex; align-items: baseline; gap: 4px; line-height: 1;
+}
+.viaje-l100 small { font-size: 0.66rem; font-weight: 600; color: var(--text-mid); }
+.viaje-chev { color: var(--text-mid); transition: transform 0.2s; font-size: 0.9rem; }
+.viaje-row[open] .viaje-chev { transform: rotate(180deg); color: var(--color5); }
+.viaje-detail {
+  padding: 4px 14px 12px;
+  border-top: 1px dashed var(--color3);
+}
+.viaje-detail .consumo-header { margin-top: 8px; }
+
 /* ── Utils ── */
 .hidden { display: none !important; }
 

@@ -1,11 +1,19 @@
 -- RemitosApp — supabase/schema.sql
--- Correr en el SQL Editor de Supabase
+-- =====================================================================
+-- Esquema REAL de la app (auditado contra js/app.js).
+-- Todo es ADITIVO e idempotente (if not exists / add column if not exists):
+-- correrlo sobre una base existente NO borra ni pisa datos.
+--
+-- Para una base nueva: correr este archivo entero.
+-- Para una base existente: ya está cubierto; además ver supabase/migrations/.
+-- =====================================================================
 
--- ── Tablas ──────────────────────────────────────────
+-- ── Tablas ───────────────────────────────────────────────────────────
 
 create table if not exists choferes (
   id         uuid primary key default gen_random_uuid(),
   nombre     text not null,
+  pin        text,                       -- PIN de 4 dígitos (login: nombre + pin)
   device_id  text unique not null,
   is_admin   boolean default false,
   created_at timestamptz default now()
@@ -15,12 +23,17 @@ create table if not exists remitos (
   id             uuid primary key default gen_random_uuid(),
   chofer_id      uuid references choferes(id) on delete cascade,
   fecha_carga    date not null,
+  numero         text,                   -- N° de remito
   destino_ida    text not null,
   destino_vuelta text,
   litros         numeric(10,2),
+  km             integer,                -- kilómetros del camión al cargar
+  foto_km_url    text,                   -- foto del odómetro
   comentarios    text,
   pagado         boolean default false,
   fecha_pago     date,
+  litros_pagados numeric(10,2) not null default 0,   -- pago parcial (litros)
+  archivado      boolean not null default false,     -- "Limpiar pagados" archiva
   created_at     timestamptz default now()
 );
 
@@ -31,29 +44,37 @@ create table if not exists remito_fotos (
   created_at  timestamptz default now()
 );
 
--- ── Índices ──────────────────────────────────────────
+-- Config key/value (ej: precio_litro para el cálculo de deuda).
+create table if not exists config (
+  key   text primary key,
+  value text
+);
 
-create index if not exists idx_choferes_device_id     on choferes(device_id);
-create index if not exists idx_remitos_chofer_id       on remitos(chofer_id);
-create index if not exists idx_remitos_pagado          on remitos(pagado);
-create index if not exists idx_remitos_fecha_carga     on remitos(fecha_carga);
-create index if not exists idx_remito_fotos_remito_id  on remito_fotos(remito_id);
+-- ── Columnas agregadas en migraciones (idempotente para bases viejas) ─
+alter table choferes add column if not exists pin            text;
+alter table remitos  add column if not exists numero         text;
+alter table remitos  add column if not exists km             integer;
+alter table remitos  add column if not exists foto_km_url    text;
+alter table remitos  add column if not exists litros_pagados numeric(10,2) not null default 0;
+alter table remitos  add column if not exists archivado      boolean not null default false;
 
--- ── RLS ───────────────────────────────────────────────
--- Herramienta interna: deshabilitar RLS para simplificar.
--- Si preferís mantenerlo, comentá las líneas "disable" y
--- descomentá las secciones "enable + policy" de abajo.
+-- ── Índices ──────────────────────────────────────────────────────────
 
-alter table choferes    disable row level security;
-alter table remitos     disable row level security;
+create index if not exists idx_choferes_device_id    on choferes(device_id);
+create index if not exists idx_remitos_chofer_id      on remitos(chofer_id);
+create index if not exists idx_remitos_pagado         on remitos(pagado);
+create index if not exists idx_remitos_archivado      on remitos(archivado);
+create index if not exists idx_remitos_fecha_carga    on remitos(fecha_carga);
+create index if not exists idx_remito_fotos_remito_id on remito_fotos(remito_id);
+
+-- ── Storage ──────────────────────────────────────────────────────────
+-- Crear (una vez, desde el panel) un bucket PÚBLICO llamado: remitos-fotos
+-- El código sube a: <chofer_id>/<remito_id>/<archivo>.jpg
+
+-- ── RLS ──────────────────────────────────────────────────────────────
+-- Herramienta interna/personal: RLS deshabilitado para simplificar.
+-- (El acceso queda protegido por la anon key + la pantalla de login de la app.)
+alter table choferes     disable row level security;
+alter table remitos      disable row level security;
 alter table remito_fotos disable row level security;
-
--- ── Alternativa: RLS permisivo (anon puede todo) ──────
--- alter table choferes enable row level security;
--- create policy "anon_all" on choferes for all to anon using (true) with check (true);
---
--- alter table remitos enable row level security;
--- create policy "anon_all" on remitos for all to anon using (true) with check (true);
---
--- alter table remito_fotos enable row level security;
--- create policy "anon_all" on remito_fotos for all to anon using (true) with check (true);
+alter table config       disable row level security;

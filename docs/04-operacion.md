@@ -1,5 +1,14 @@
 # 04 — Operación
 
+## Tests
+
+Suite del motor (lógica pura: estados de pago, deuda, consumo/viajes, formato, escape).
+No tiene dependencias — carga `js/app.js` en un contexto `vm` con stubs:
+
+```bash
+node tests/engine.test.mjs    # 78 casos, ~instantáneo
+```
+
 ## Correr en local
 
 No hay build step, pero **hay que servir desde la raíz** (la app usa rutas absolutas:

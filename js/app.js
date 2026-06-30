@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v31 · 2026-06-30';
+const APP_VERSION = 'v32 · 2026-06-30';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -105,13 +105,20 @@ async function init() {
   // en el backend (evita errores de foreign key al enviar remitos).
   if (S.choferId && S.nombre) {
     try {
-      let { data } = await sb.from('choferes').select('*').ilike('nombre', S.nombre).maybeSingle();
-      if (!data) {
-        ({ data } = await sb.from('choferes').select('*').eq('device_id', S.deviceId).maybeSingle());
+      let { data, error } = await sb.from('choferes').select('*').ilike('nombre', S.nombre).maybeSingle();
+      if (!data && !error) {
+        ({ data, error } = await sb.from('choferes').select('*').eq('device_id', S.deviceId).maybeSingle());
       }
       if (data) {
         guardarSesionChofer(data); // refresca id/nombre/is_admin si cambiaron
         if (data.is_admin) { renderAdmin(); return; }
+      } else if (!error) {
+        // La DB respondió OK (sin error de red ni de DB) pero el chofer no existe:
+        // fue borrado. Limpiar la sesión cacheada y volver al login.
+        ['ypf_chofer_id', 'ypf_nombre', 'ypf_is_admin'].forEach(k => localStorage.removeItem(k));
+        S.choferId = null; S.nombre = null; S.isAdmin = false;
+        renderWelcome();
+        return;
       }
     } catch (e) { /* sin conexión: seguir con la sesión cacheada */ }
     renderChofer();
@@ -588,7 +595,8 @@ async function submitRemito() {
     const ext  = (S.fotoKm.type === 'image/png') ? 'png' : 'jpg';
     const path = `${targetChoferId}/${remito.id}/km_${Date.now()}.${ext}`;
     const kmUrl = await uploadFoto(S.fotoKm, path);
-    await sb.from('remitos').update({ foto_km_url: kmUrl }).eq('id', remito.id);
+    const { error: kmUpdErr } = await sb.from('remitos').update({ foto_km_url: kmUrl }).eq('id', remito.id);
+    if (kmUpdErr) throw kmUpdErr;   // que caiga al catch y se cuente como fallo de la foto
   } catch (e) {
     console.error('Error foto km:', e);
     fotoKmFallo = e.message;
@@ -1059,8 +1067,8 @@ function computeViajes(remitos) {
         fechaDesde: older.fecha_carga,
         fechaHasta: newer.fecha_carga,
         km:         distance,
-        litros:     newer.litros,
-        l100:       (newer.litros / distance) * 100,
+        litros:     parseFloat(newer.litros) || 0,
+        l100:       (parseFloat(newer.litros) || 0) / distance * 100,
       });
     }
   }
@@ -1245,10 +1253,10 @@ function renderRemitoCard(r) {
         ${r.litros ? `<span class="info-chip">⛽ ${r.litros}L</span>` : ''}
         ${r.km != null ? `<span class="info-chip">🛣 ${r.km.toLocaleString('es-AR')} km</span>` : ''}
       </div>
-      ${r.comentarios ? `<div class="remito-comentarios">💬 ${r.comentarios}</div>` : ''}
+      ${r.comentarios ? `<div class="remito-comentarios">💬 ${esc(r.comentarios)}</div>` : ''}
       ${r.numero || (kmThumb || thumbs) ? `
         <div class="fotos-section">
-          ${r.numero ? `<div class="remito-numero"><span class="remito-numero-label">N° REMITO</span><span class="remito-numero-val">${r.numero}</span></div>` : ''}
+          ${r.numero ? `<div class="remito-numero"><span class="remito-numero-label">N° REMITO</span><span class="remito-numero-val">${esc(r.numero)}</span></div>` : ''}
           ${(kmThumb || thumbs) ? `<div class="fotos-row">${kmThumb}${thumbs}${masTag}</div>` : ''}
         </div>` : ''}
       ${r.pagado && r.fecha_pago ? `<div class="fecha-pago-info">Pagado el ${fmt(r.fecha_pago)}</div>` : ''}
@@ -1364,6 +1372,7 @@ function showPagoParcial(id) {
     let v = parseFloat(el.querySelector('#parcial-input').value);
     if (isNaN(v) || v < 0) v = 0;
     if (total > 0 && v > total) v = total;
+    if (total <= 0) v = 0;
     const fully = total > 0 && v >= total;
     const upd = { litros_pagados: v, pagado: fully };
     upd.fecha_pago = fully ? today() : null;
@@ -1439,7 +1448,7 @@ function showEditRemito(id) {
 
         <div class="field">
           <label class="field-label">Comentarios</label>
-          <textarea id="e-comentarios" class="inp inp-ta" rows="2">${r.comentarios || ''}</textarea>
+          <textarea id="e-comentarios" class="inp inp-ta" rows="2">${esc(r.comentarios || '')}</textarea>
         </div>
 
         <div class="field">
@@ -1550,6 +1559,7 @@ function showEditRemito(id) {
       let lpVal = parseFloat(el.querySelector('#e-litros-pagados').value);
       if (isNaN(lpVal) || lpVal < 0) lpVal = 0;
       if (totL > 0 && lpVal > totL) lpVal = totL;
+      if (totL <= 0) lpVal = 0;   // sin litros no puede haber pago parcial
       const fully = totL > 0 && lpVal >= totL;
 
       const update = {
@@ -1648,8 +1658,7 @@ function eliminarRemito(id) {
     `Se borra el remito${quien} y sus fotos. Esta acción no se puede deshacer.`,
     'Eliminar',
     async () => {
-      const { error: fErr } = await sb.from('remito_fotos').delete().eq('remito_id', id);
-      if (fErr) { toast(`Error al borrar fotos: ${fErr.message}`, 'err'); return; }
+      // Un solo delete: el FK on delete cascade borra remito_fotos automáticamente (atómico).
       const { error: rErr } = await sb.from('remitos').delete().eq('id', id);
       if (rErr) { toast(`Error al borrar remito: ${rErr.message}`, 'err'); return; }
       toast('Remito eliminado ✓');

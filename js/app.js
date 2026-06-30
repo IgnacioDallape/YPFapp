@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v29 · 2026-06-22';
+const APP_VERSION = 'v30 · 2026-06-30';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -68,6 +68,10 @@ function setLoading(msg = 'Cargando...') {
 
 // Formatea litros: sin decimales si es entero, con 1 decimal si no.
 const fmtLitros = n => { n = parseFloat(n) || 0; return n % 1 === 0 ? n : n.toFixed(1); };
+
+// Escapa texto para interpolar de forma segura en HTML (contenido y atributos).
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // =====================================================
 // ESTADO DE PAGO (derivado de litros) — pago parcial
@@ -292,23 +296,21 @@ async function adminLoginSuccess(nombre) {
 // =====================================================
 // CHOFER
 // =====================================================
-function renderChofer() {
-  S.fotosStaged = [];
-  S.fotoKm = null;
-  app().innerHTML = `
-    <div class="screen screen-chofer">
-      <header class="app-header">
-        <span class="header-name">Hola, ${S.nombre} 👋 <span class="version-inline">${APP_VERSION}</span></span>
-        <div class="header-actions">
-          <div id="install-wrap-chofer"></div>
-          <button id="btn-logout" class="btn-logout" title="Cerrar sesión">↩ Salir</button>
-        </div>
-      </header>
-      <main class="chofer-main">
-
+// Formulario de carga de remito. Reutilizado por el chofer y por el admin.
+// adminMode=true agrega un selector de chofer (para que el admin cargue por otro).
+function remitoFormHTML(adminMode, choferes) {
+  const choferField = adminMode ? `
+          <div class="field">
+            <label class="field-label">Chofer *</label>
+            <select id="f-chofer" class="inp">
+              <option value="">Elegí un chofer...</option>
+              ${(choferes || []).map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('')}
+            </select>
+          </div>` : '';
+  return `
         <div class="card form-card">
-          <h2 class="section-title">Cargar nuevo remito</h2>
-
+          <h2 class="section-title">${adminMode ? 'Cargar remito por un chofer' : 'Cargar nuevo remito'}</h2>
+          ${choferField}
           <div class="form-row-2">
             <div class="field">
               <label class="field-label">Fecha de carga *</label>
@@ -375,7 +377,24 @@ function renderChofer() {
           <button id="btn-enviar" class="btn btn-primary btn-full btn-lg" disabled>
             📤 Enviar remito
           </button>
+        </div>`;
+}
+
+function renderChofer() {
+  S.fotosStaged = [];
+  S.fotoKm = null;
+  app().innerHTML = `
+    <div class="screen screen-chofer">
+      <header class="app-header">
+        <span class="header-name">Hola, ${esc(S.nombre)} 👋 <span class="version-inline">${APP_VERSION}</span></span>
+        <div class="header-actions">
+          <div id="install-wrap-chofer"></div>
+          <button id="btn-logout" class="btn-logout" title="Cerrar sesión">↩ Salir</button>
         </div>
+      </header>
+      <main class="chofer-main">
+
+        ${remitoFormHTML(false)}
 
         <div class="card" id="mis-remitos-card">
           <h2 class="section-title">Mis últimos remitos</h2>
@@ -404,9 +423,12 @@ function bindChoferForm() {
     const km     = parseFloat($('f-km').value);
     const ida    = $('f-destino-ida').value.trim();
     const vuelta = $('f-destino-vuelta').value.trim();
-    btnEnviar.disabled = !(fecha && numero && litros > 0 && km > 0 && ida && vuelta && S.fotoKm && S.fotosStaged.length > 0);
+    // En modo admin (si existe el selector) hay que tener un chofer elegido.
+    const choferOk = !$('f-chofer') || !!$('f-chofer').value;
+    btnEnviar.disabled = !(fecha && numero && litros > 0 && km > 0 && ida && vuelta && S.fotoKm && S.fotosStaged.length > 0 && choferOk);
   };
 
+  $('f-chofer')?.addEventListener('change', checkValid);
   $('f-fecha').addEventListener('change', checkValid);
   $('f-numero').addEventListener('input', checkValid);
   $('f-litros').addEventListener('input', checkValid);
@@ -532,8 +554,14 @@ async function submitRemito() {
   const km             = parseInt($('f-km').value, 10);
   const comentarios    = $('f-comentarios').value.trim() || null;
 
+  // Modo admin: si existe el selector de chofer, el remito se carga por ese chofer.
+  // NO se cae a S.choferId (eso atribuiría el remito al admin si el select quedó vacío).
+  const choferSel      = $('f-chofer');
+  const isAdminUpload  = !!choferSel;
+  const targetChoferId = isAdminUpload ? choferSel.value : S.choferId;
+
   // Doble validación por si el botón se habilitó indebidamente
-  if (!fecha || !numero || !destinoIda || !destinoVuelta || !(litros > 0) || !(km > 0) || !S.fotoKm) {
+  if (!fecha || !numero || !destinoIda || !destinoVuelta || !(litros > 0) || !(km > 0) || !S.fotoKm || !targetChoferId) {
     toast('Completá todos los campos antes de enviar', 'err');
     $('btn-enviar').disabled = false;
     $('btn-enviar').textContent = '📤 Enviar remito';
@@ -541,14 +569,15 @@ async function submitRemito() {
   }
 
   // 1. Insertar remito (sin foto_km_url aún — se completa luego)
-  const remitoData = { chofer_id: S.choferId, fecha_carga: fecha, numero, destino_ida: destinoIda,
+  const remitoData = { chofer_id: targetChoferId, fecha_carga: fecha, numero, destino_ida: destinoIda,
                        destino_vuelta: destinoVuelta, litros, km, comentarios };
   let { data: remito, error: rErr } = await sb
     .from('remitos').insert(remitoData).select().single();
 
   // Auto-reparación: si el chofer_id cacheado quedó viejo (FK 23503),
   // re-buscar el chofer por nombre, refrescar el id y reintentar una vez.
-  if (rErr && rErr.code === '23503') {
+  // (Solo en modo chofer; en modo admin el chofer_id viene de la DB.)
+  if (rErr && rErr.code === '23503' && !isAdminUpload) {
     try {
       const { data: ch } = await sb.from('choferes').select('*').ilike('nombre', S.nombre).maybeSingle();
       if (ch && ch.id !== S.choferId) {
@@ -573,7 +602,7 @@ async function submitRemito() {
   let fotoKmFallo = null;
   try {
     const ext  = (S.fotoKm.type === 'image/png') ? 'png' : 'jpg';
-    const path = `${S.choferId}/${remito.id}/km_${Date.now()}.${ext}`;
+    const path = `${targetChoferId}/${remito.id}/km_${Date.now()}.${ext}`;
     const kmUrl = await uploadFoto(S.fotoKm, path);
     await sb.from('remitos').update({ foto_km_url: kmUrl }).eq('id', remito.id);
   } catch (e) {
@@ -589,7 +618,7 @@ async function submitRemito() {
     btn.textContent = `⏳ Subiendo foto ${i + 1}/${S.fotosStaged.length}...`;
     try {
       const ext  = (file.type === 'image/png') ? 'png' : 'jpg';
-      const path = `${S.choferId}/${remito.id}/${Date.now()}_${i}.${ext}`;
+      const path = `${targetChoferId}/${remito.id}/${Date.now()}_${i}.${ext}`;
       const publicUrl = await uploadFoto(file, path);
       await sb.from('remito_fotos').insert({ remito_id: remito.id, storage_url: publicUrl });
       subidas++;
@@ -610,7 +639,7 @@ async function submitRemito() {
     toast('Remito enviado correctamente ✓');
   }
 
-  renderChofer();
+  if (isAdminUpload) renderAdmin(); else renderChofer();
 }
 
 async function loadMisRemitos() {
@@ -829,6 +858,16 @@ async function loadAdminContent() {
 
   let html = '';
 
+  // Herramientas del admin (tab "todos"): subir remito por un chofer + gestión de choferes.
+  if (S.adminTab === 'todos') {
+    html += `
+      <div class="admin-tools-row">
+        <button id="btn-subir-remito" class="btn btn-primary btn-sm">➕ Subir remito</button>
+        <button id="btn-usuarios" class="btn btn-secondary btn-sm">👤 Choferes</button>
+      </div>
+    `;
+  }
+
   // Deuda de combustible (tab "pendientes") — resta lo ya pagado (parcial).
   if (S.adminTab === 'pendientes') {
     const totalLitros = activos.reduce((a, r) => a + litrosPendientes(r), 0);
@@ -910,6 +949,8 @@ async function loadAdminContent() {
   $('btn-limpiar')?.addEventListener('click', () => { S.filtroChofer = ''; S.filtroMes = ''; loadAdminContent(); });
   $('btn-archivar-pagados')?.addEventListener('click', archivarPagados);
   $('btn-edit-precio')?.addEventListener('click', showPrecioEditor);
+  $('btn-subir-remito')?.addEventListener('click', renderAdminUploadRemito);
+  $('btn-usuarios')?.addEventListener('click', showUsuariosModal);
   bindAdminListEvents(main);
 }
 
@@ -1103,7 +1144,7 @@ function renderViaje(v) {
   return `
     <details class="viaje-row">
       <summary class="viaje-summary">
-        <span class="viaje-chofer">${v.chofer}</span>
+        <span class="viaje-chofer">${esc(v.chofer)}</span>
         <span class="viaje-l100">${v.l100.toFixed(1)}<small>L/100km</small></span>
         <span class="viaje-chev">▾</span>
       </summary>
@@ -1199,7 +1240,7 @@ function renderRemitoCard(r) {
     <div class="remito-card ${estado === 'pagado' ? 'card-pagado' : ''} ${r.archivado ? 'card-archivado' : ''}">
       <div class="remito-card-header">
         <div class="remito-meta">
-          <span class="chofer-chip">${nombre}</span>
+          <span class="chofer-chip">${esc(nombre)}</span>
           <span class="fecha-chip">${fmt(r.fecha_carga)}</span>
           ${r.archivado ? `<span class="archivado-tag">Archivado</span>` : ''}
         </div>
@@ -1628,6 +1669,144 @@ function eliminarRemito(id) {
       loadAdminContent();
     }
   );
+}
+
+// =====================================================
+// ADMIN — Subir remito por un chofer (sin desloguear)
+// =====================================================
+async function renderAdminUploadRemito() {
+  S.fotosStaged = [];
+  S.fotoKm = null;
+  setLoading('Cargando...');
+  let choferes;
+  try {
+    const res = await sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre');
+    if (res.error) throw res.error;
+    choferes = res.data || [];
+  } catch (e) {
+    toast('No se pudieron cargar los choferes. Probá de nuevo.', 'err');
+    renderAdmin();
+    return;
+  }
+
+  app().innerHTML = `
+    <div class="screen screen-chofer">
+      <header class="app-header">
+        <span class="header-name">Subir remito <span class="version-inline">como admin</span></span>
+        <button id="btn-volver-admin" class="btn-logout" title="Volver al panel">← Volver</button>
+      </header>
+      <main class="chofer-main">
+        ${remitoFormHTML(true, choferes)}
+      </main>
+    </div>
+  `;
+
+  bindChoferForm();
+  $('btn-volver-admin').addEventListener('click', () => renderAdmin());
+}
+
+// =====================================================
+// ADMIN — Gestión de choferes (alta / baja)
+// =====================================================
+function showUsuariosModal() {
+  const el = document.createElement('div');
+  el.className = 'confirm-overlay';
+  el.innerHTML = `
+    <div class="confirm-box usuarios-box">
+      <div class="confirm-title">Choferes</div>
+      <div class="confirm-sub">Crear o eliminar choferes. La contraseña es un PIN de 4 dígitos.</div>
+      <div class="form-row-2">
+        <div class="field">
+          <label class="field-label">Nombre</label>
+          <input id="u-nombre" class="inp" placeholder="Ej: Hugo" maxlength="60" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="field-label">PIN (4 díg.)</label>
+          <input id="u-pin" class="inp" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
+        </div>
+      </div>
+      <button id="u-add" class="btn btn-primary btn-full mt-sm">➕ Agregar chofer</button>
+      <div class="usuarios-list" id="u-list"><div class="loading-inline">Cargando...</div></div>
+      <div class="confirm-btns" style="margin-top:6px">
+        <button class="btn btn-ghost" id="u-close">Cerrar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const close = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); };
+  el.querySelector('#u-close').addEventListener('click', close);
+  el.addEventListener('click', e => { if (e.target === el) close(); });
+
+  const pinInput = el.querySelector('#u-pin');
+  pinInput.addEventListener('input', () => { pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 4); });
+
+  const box = el.querySelector('#u-list');
+  const renderList = (list) => {
+    if (!list || !list.length) { box.innerHTML = `<div class="usuarios-empty">No hay choferes cargados</div>`; return; }
+    box.innerHTML = list.map(c => `
+      <div class="usuario-row">
+        <span class="usuario-nombre">${esc(c.nombre)}</span>
+        <button class="usuario-del" data-id="${c.id}" data-nombre="${esc(c.nombre)}" title="Eliminar chofer">🗑</button>
+      </div>`).join('');
+    box.querySelectorAll('.usuario-del').forEach(b =>
+      b.addEventListener('click', () => eliminarChofer(b.dataset.id, b.dataset.nombre, reload)));
+  };
+  const reload = async () => {
+    const { data } = await sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre');
+    renderList(data);
+  };
+  reload();
+
+  const addBtn = el.querySelector('#u-add');
+  addBtn.addEventListener('click', async () => {
+    const nombre = el.querySelector('#u-nombre').value.trim();
+    const pin = pinInput.value;
+    if (nombre.length < 2) { toast('Ingresá un nombre', 'err'); return; }
+    if (pin.length !== 4)  { toast('El PIN debe tener 4 dígitos', 'err'); return; }
+    addBtn.disabled = true;                 // evita doble alta por doble click
+    await addChofer(nombre, pin, () => {
+      el.querySelector('#u-nombre').value = '';
+      pinInput.value = '';
+      reload();
+    });
+    addBtn.disabled = false;
+  });
+}
+
+// Crea un chofer (equivale al INSERT manual): nombre + PIN, is_admin=false,
+// device_id temporal único (se reemplaza por el real cuando el chofer entra).
+async function addChofer(nombre, pin, onOk) {
+  const { data: existing } = await sb
+    .from('choferes').select('id').ilike('nombre', nombre).limit(1).maybeSingle();
+  if (existing) { toast(`Ya existe un chofer "${nombre}"`, 'warn'); return; }
+
+  const { error } = await sb.from('choferes').insert({
+    nombre, pin, device_id: crypto.randomUUID(), is_admin: false,
+  });
+  if (error) { toast(`Error al crear: ${error.message}`, 'err'); return; }
+  toast(`Chofer "${nombre}" creado ✓`);
+  onOk && onOk();
+}
+
+// Elimina un chofer. OJO: por el FK on delete cascade, borra también sus remitos
+// y fotos — por eso se avisa cuántos remitos se van a perder.
+async function eliminarChofer(id, nombre, onOk) {
+  const { count, error: cErr } = await sb
+    .from('remitos').select('*', { count: 'exact', head: true }).eq('chofer_id', id);
+  const n = count || 0;
+  // Si el conteo falla, NO afirmar que no hay nada que perder: avisar en pesimista.
+  const aviso = cErr
+    ? 'No se pudo verificar cuántos remitos tiene: se borrarán TODOS sus remitos y fotos. Esta acción no se puede deshacer.'
+    : (n > 0
+        ? `Se borrarán también sus ${n} remito${n !== 1 ? 's' : ''} (y sus fotos). Esta acción no se puede deshacer.`
+        : 'Esta acción no se puede deshacer.');
+  showConfirm(`¿Eliminar al chofer "${esc(nombre)}"?`, aviso, 'Eliminar', async () => {
+    const { error } = await sb.from('choferes').delete().eq('id', id);
+    if (error) { toast(`Error al eliminar: ${error.message}`, 'err'); return; }
+    toast(`Chofer "${nombre}" eliminado ✓`);
+    onOk && onOk();
+  });
 }
 
 // =====================================================

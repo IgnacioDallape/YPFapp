@@ -51,10 +51,14 @@ manifest/SW). Ver [`docs/04-operacion.md`](docs/04-operacion.md).
 - **3 pestañas**:
   - **Pendientes** — remitos por cobrar (incluye parciales y pagados aún no archivados) +
     la **deuda de combustible**. Marcar un remito como pagado **ya no lo hace desaparecer**.
-  - **Todos** — todos los remitos, con filtros por chofer y mes, **borrado individual**, y una
-    sección colapsable de **Archivados**.
+  - **Todos** — todos los remitos, con filtros por chofer y mes, **borrado individual**, una
+    sección colapsable de **Archivados**, y dos herramientas: **➕ Subir remito** y **👤 Choferes**.
   - **Historial** — consumo **L/100km por viaje** (de una carga a la siguiente). Colapsado
     muestra solo el consumo; al desplegar aparecen km recorridos y litros. Filtra por mes y chofer.
+- **Subir remito por un chofer**: desde "Todos", el admin puede cargar un remito (con fotos) a
+  nombre de cualquier chofer, sin desloguearse — útil cuando un chofer se olvidó de cargarlo.
+- **Choferes (alta/baja)**: crear un chofer (nombre + PIN de 4 dígitos) o eliminarlo. Eliminar un
+  chofer borra también sus remitos (se avisa antes).
 - **Pago parcial**: en cada remito se puede registrar cuántos **litros** se pagaron (útil
   cuando una orden junta 2 remitos). La deuda resta lo ya pagado.
 - **Archivar pagados**: saca de Pendientes los remitos pagados al 100% **sin borrarlos**

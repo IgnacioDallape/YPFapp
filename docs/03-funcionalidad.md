@@ -30,6 +30,8 @@ Entra desde "Soy administrador" + contraseña (`ADMIN_PASSWORD`). `renderAdmin` 
 - **Marcar como pagado NO hace desaparecer el remito** (sigue acá hasta archivarlo).
 
 ### Pestaña "Todos"
+- Arriba, dos herramientas del admin: **➕ Subir remito** (cargar un remito por un chofer,
+  ver más abajo) y **👤 Choferes** (alta/baja de choferes).
 - Query: todos los remitos (activos + archivados). Filtros por **chofer** y **mes**
   (dropdowns custom: `bindChoferDropdown`, `bindMesPicker`).
 - **Stats** del mes (remitos, litros, pendientes de pago).
@@ -46,6 +48,27 @@ Entra desde "Soy administrador" + contraseña (`ADMIN_PASSWORD`). `renderAdmin` 
 - Lista de **viajes** (`renderViaje`, usando `<details>` nativo):
   - **Colapsado**: solo chofer + **L/100km**.
   - **Desplegado**: fechas del tramo + **km recorridos** + **litros** + **L/100km**.
+
+## Subir remito por un chofer (admin)
+
+Botón **➕ Subir remito** en "Todos" → `renderAdminUploadRemito`. Reusa el **mismo formulario**
+del chofer (`remitoFormHTML(true, choferes)`) pero con un **selector de chofer** arriba. El admin
+elige el chofer, completa el remito (con fotos) y al enviar el remito queda cargado **a nombre de
+ese chofer** (mismo `submitRemito`, que detecta el selector `f-chofer` y usa ese `chofer_id` para el
+registro y los paths de Storage). Sirve para cuando un chofer se olvidó de cargar. Al terminar
+vuelve al panel admin. No hace falta desloguear ni entrar como el chofer.
+
+## Gestión de choferes (admin)
+
+Botón **👤 Choferes** en "Todos" → `showUsuariosModal`. Permite:
+- **Alta** (`addChofer`): nombre + PIN de 4 dígitos → crea un chofer con `is_admin=false` y un
+  `device_id` temporal único (`crypto.randomUUID()`, se reemplaza por el real cuando el chofer
+  entra). Evita duplicados por nombre. Es el equivalente por UI al `INSERT` manual en Supabase.
+- **Baja** (`eliminarChofer`): elimina el chofer. ⚠️ Por el FK `on delete cascade`, **borra
+  también todos sus remitos y fotos** — el confirm avisa cuántos remitos se van a perder.
+
+A partir del alta, ese chofer entra con su nombre + PIN y funciona idéntico a los demás (sus
+remitos, litros y consumo propios), sin tocar nada más.
 
 ## Editor de remito (admin)
 

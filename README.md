@@ -43,8 +43,8 @@ manifest/SW). Ver [`docs/04-operacion.md`](docs/04-operacion.md).
 ### Choferes
 - Login con **nombre + PIN de 4 dígitos** (el chofer tiene que existir en la tabla `choferes`).
 - Cargan remitos con: fecha, N° de remito, litros, **km del camión**, **foto del odómetro
-  (obligatoria)**, destino ida/vuelta, comentarios y fotos del remito. Las fotos se comprimen
-  en el celular antes de subir.
+  (obligatoria)**, comentarios y fotos del remito. Las fotos se comprimen en el celular antes
+  de subir.
 
 ### Admin
 - En la bienvenida: tocar **"Soy administrador"** e ingresar la contraseña.

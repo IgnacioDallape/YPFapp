@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v30 · 2026-06-30';
+const APP_VERSION = 'v31 · 2026-06-30';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -346,16 +346,6 @@ function remitoFormHTML(adminMode, choferes) {
           </div>
 
           <div class="field">
-            <label class="field-label">Destino ida * <span style="font-size:0.75em;font-weight:400;opacity:0.7">(del último viaje)</span></label>
-            <input type="text" id="f-destino-ida" class="inp" placeholder="¿A dónde fue en el último viaje?">
-          </div>
-
-          <div class="field">
-            <label class="field-label">Destino vuelta * <span style="font-size:0.75em;font-weight:400;opacity:0.7">(del último viaje)</span></label>
-            <input type="text" id="f-destino-vuelta" class="inp" placeholder="¿De dónde regresó en el último viaje?">
-          </div>
-
-          <div class="field">
             <label class="field-label">Comentarios</label>
             <textarea id="f-comentarios" class="inp inp-ta" rows="3"
               placeholder="Ej: Rotura de cubierta, espera en destino, observaciones... (opcional)"></textarea>
@@ -421,11 +411,9 @@ function bindChoferForm() {
     const numero = $('f-numero').value.trim();
     const litros = parseFloat($('f-litros').value);
     const km     = parseFloat($('f-km').value);
-    const ida    = $('f-destino-ida').value.trim();
-    const vuelta = $('f-destino-vuelta').value.trim();
     // En modo admin (si existe el selector) hay que tener un chofer elegido.
     const choferOk = !$('f-chofer') || !!$('f-chofer').value;
-    btnEnviar.disabled = !(fecha && numero && litros > 0 && km > 0 && ida && vuelta && S.fotoKm && S.fotosStaged.length > 0 && choferOk);
+    btnEnviar.disabled = !(fecha && numero && litros > 0 && km > 0 && S.fotoKm && S.fotosStaged.length > 0 && choferOk);
   };
 
   $('f-chofer')?.addEventListener('change', checkValid);
@@ -433,8 +421,6 @@ function bindChoferForm() {
   $('f-numero').addEventListener('input', checkValid);
   $('f-litros').addEventListener('input', checkValid);
   $('f-km').addEventListener('input', checkValid);
-  $('f-destino-ida').addEventListener('input', checkValid);
-  $('f-destino-vuelta').addEventListener('input', checkValid);
 
   const addFotos = input => {
     S.fotosStaged = [...S.fotosStaged, ...Array.from(input.files)];
@@ -548,8 +534,6 @@ async function submitRemito() {
 
   const fecha          = $('f-fecha').value;
   const numero         = $('f-numero').value.trim();
-  const destinoIda     = $('f-destino-ida').value.trim();
-  const destinoVuelta  = $('f-destino-vuelta').value.trim();
   const litros         = parseFloat($('f-litros').value);
   const km             = parseInt($('f-km').value, 10);
   const comentarios    = $('f-comentarios').value.trim() || null;
@@ -561,7 +545,7 @@ async function submitRemito() {
   const targetChoferId = isAdminUpload ? choferSel.value : S.choferId;
 
   // Doble validación por si el botón se habilitó indebidamente
-  if (!fecha || !numero || !destinoIda || !destinoVuelta || !(litros > 0) || !(km > 0) || !S.fotoKm || !targetChoferId) {
+  if (!fecha || !numero || !(litros > 0) || !(km > 0) || !S.fotoKm || !targetChoferId) {
     toast('Completá todos los campos antes de enviar', 'err');
     $('btn-enviar').disabled = false;
     $('btn-enviar').textContent = '📤 Enviar remito';
@@ -569,8 +553,8 @@ async function submitRemito() {
   }
 
   // 1. Insertar remito (sin foto_km_url aún — se completa luego)
-  const remitoData = { chofer_id: targetChoferId, fecha_carga: fecha, numero, destino_ida: destinoIda,
-                       destino_vuelta: destinoVuelta, litros, km, comentarios };
+  const remitoData = { chofer_id: targetChoferId, fecha_carga: fecha, numero,
+                       destino_ida: null, destino_vuelta: null, litros, km, comentarios };
   let { data: remito, error: rErr } = await sb
     .from('remitos').insert(remitoData).select().single();
 
@@ -671,7 +655,9 @@ async function loadMisRemitos() {
         <span class="mini-fecha">${fmt(r.fecha_carga)}</span>
       </div>
       <div class="mini-destino">
-        ${r.destino_ida}${r.destino_vuelta ? ` → ${r.destino_vuelta}` : ''}
+        ${(r.destino_ida || r.destino_vuelta)
+          ? `${esc(r.destino_ida || '')}${r.destino_vuelta ? ` → ${esc(r.destino_vuelta)}` : ''}`
+          : `N° ${esc(r.numero || '—')}`}
       </div>
       <div class="mini-meta">
         ${r.litros ? `<span class="mini-litros">⛽ ${r.litros}L</span>` : ''}
@@ -1250,10 +1236,11 @@ function renderRemitoCard(r) {
           ${badge}
         </div>
       </div>
+      ${(r.destino_ida || r.destino_vuelta) ? `
       <div class="remito-destinos">
-        <span class="destino-tag">📍 ${r.destino_ida}</span>
-        ${r.destino_vuelta ? `<span class="dest-arrow">→</span><span class="destino-tag">${r.destino_vuelta}</span>` : ''}
-      </div>
+        ${r.destino_ida ? `<span class="destino-tag">📍 ${esc(r.destino_ida)}</span>` : ''}
+        ${r.destino_vuelta ? `<span class="dest-arrow">→</span><span class="destino-tag">${esc(r.destino_vuelta)}</span>` : ''}
+      </div>` : ''}
       <div class="remito-info-row">
         ${r.litros ? `<span class="info-chip">⛽ ${r.litros}L</span>` : ''}
         ${r.km != null ? `<span class="info-chip">🛣 ${r.km.toLocaleString('es-AR')} km</span>` : ''}

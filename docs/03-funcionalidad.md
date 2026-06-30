@@ -5,8 +5,8 @@
 1. **Login**: nombre + PIN de 4 dígitos (`handleLogin`). El chofer debe existir en `choferes`
    con ese `pin`. Al entrar se actualiza su `device_id`.
 2. **Cargar remito** (`renderChofer` / `submitRemito`). Campos obligatorios: fecha, N° de
-   remito, litros, km, **foto del km**, destino ida y vuelta, y **al menos 1 foto del remito**.
-   Comentarios opcional.
+   remito, litros, km, **foto del km**, y **al menos 1 foto del remito**. Comentarios opcional.
+   (Los choferes ya **no** cargan destino ida/vuelta; `destino_ida` quedó nullable.)
 3. Las fotos se **comprimen en el cliente** (`compressImage`, canvas, máx 1400px, JPEG 0.82)
    y se suben a Storage (`uploadFoto`). Si una foto falla, el remito igual queda guardado.
 4. Auto-reparación: si el `chofer_id` cacheado quedó viejo (FK `23503`), re-busca el chofer

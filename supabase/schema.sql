@@ -24,7 +24,7 @@ create table if not exists remitos (
   chofer_id      uuid references choferes(id) on delete cascade,
   fecha_carga    date not null,
   numero         text,                   -- N° de remito
-  destino_ida    text not null,
+  destino_ida    text,                   -- opcional (los choferes ya no lo cargan)
   destino_vuelta text,
   litros         numeric(10,2),
   km             integer,                -- kilómetros del camión al cargar
@@ -57,6 +57,7 @@ alter table remitos  add column if not exists km             integer;
 alter table remitos  add column if not exists foto_km_url    text;
 alter table remitos  add column if not exists litros_pagados numeric(10,2) not null default 0;
 alter table remitos  add column if not exists archivado      boolean not null default false;
+alter table remitos  alter column destino_ida drop not null;   -- destinos opcionales
 
 -- ── Índices ──────────────────────────────────────────────────────────
 

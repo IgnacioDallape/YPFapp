@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v32 · 2026-06-30';
+const APP_VERSION = 'v33 · 2026-06-30';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase

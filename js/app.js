@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v33 · 2026-06-30';
+const APP_VERSION = 'v34 · 2026-06-30';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -91,6 +91,33 @@ function estadoPago(r) {
   if (r.pagado || (tot > 0 && pag >= tot)) return 'pagado';
   if (pag > 0) return 'parcial';
   return 'pendiente';
+}
+
+// =====================================================
+// CAMBIO DE ACEITE — alerta por km desde el último cambio
+// =====================================================
+const OIL_INTERVAL_KM = 30000;   // intervalo nominal
+const OIL_ALERT_KM    = 29000;   // se avisa un poco antes
+
+// Marca en cada remito `_oilKmDesde` = km recorridos desde el último cambio de
+// aceite del mismo chofer (un remito con cambio_aceite=true y km <= el de este).
+// null si ese chofer todavía no tiene ningún cambio registrado.
+function computeOilStatus(remitos, oilChanges) {
+  const byChofer = {};
+  for (const o of (oilChanges || [])) {
+    if (o.km == null) continue;
+    (byChofer[o.chofer_id] = byChofer[o.chofer_id] || []).push(o.km);
+  }
+  for (const k in byChofer) byChofer[k].sort((a, b) => a - b);
+  for (const r of (remitos || [])) {
+    r._oilKmDesde = null;
+    if (r.km == null) continue;
+    const list = byChofer[r.chofer_id];
+    if (!list) continue;
+    let last = null;
+    for (const km of list) { if (km <= r.km) last = km; else break; }
+    if (last != null) r._oilKmDesde = r.km - last;
+  }
 }
 
 // =====================================================
@@ -850,6 +877,15 @@ async function loadAdminContent() {
   _remitosCache = {};
   all.forEach(r => { _remitosCache[r.id] = r; });
 
+  // Cambio de aceite: traer los puntos de cambio y anotar km desde el último.
+  // Tolerante: si la columna cambio_aceite no existe todavía, no rompe (sin alertas).
+  let oilChanges = [];
+  try {
+    const res = await sb.from('remitos').select('chofer_id, km').eq('cambio_aceite', true);
+    if (!res.error) oilChanges = res.data || [];
+  } catch (e) { /* columna aún no creada */ }
+  computeOilStatus(all, oilChanges);
+
   let html = '';
 
   // Herramientas del admin (tab "todos"): subir remito por un chofer + gestión de choferes.
@@ -1040,6 +1076,19 @@ function bindAdminListEvents(main) {
     img.addEventListener('click', () => openLightbox(JSON.parse(img.dataset.urls), +img.dataset.idx)));
   main.querySelectorAll('.btn-edit-remito').forEach(b =>
     b.addEventListener('click', () => showEditRemito(b.dataset.id)));
+  main.querySelectorAll('.btn-aceite').forEach(b =>
+    b.addEventListener('click', () => toggleAceite(b.dataset.id)));
+}
+
+// Marca / desmarca "cambio de aceite" en un remito. El km de ese remito pasa a
+// ser la nueva base desde la que se cuentan los 30.000 km hasta el próximo aviso.
+async function toggleAceite(id) {
+  const r = _remitosCache[id];
+  const nuevo = !(r && r.cambio_aceite);
+  const { error } = await sb.from('remitos').update({ cambio_aceite: nuevo }).eq('id', id);
+  if (error) { toast('No se pudo guardar (¿corriste la migración del aceite?)', 'err'); return; }
+  toast(nuevo ? 'Cambio de aceite marcado 🛢 ✓' : 'Cambio de aceite quitado');
+  loadAdminContent();
 }
 
 // =====================================================
@@ -1230,6 +1279,17 @@ function renderRemitoCard(r) {
       </div>`;
   }
 
+  // Cambio de aceite: botón (al lado de Editar), chip de progreso y alerta.
+  const aceiteBtn = `<button class="btn-aceite ${r.cambio_aceite ? 'is-on' : ''}" data-id="${r.id}" title="${r.cambio_aceite ? 'Cambio de aceite hecho acá — tocá para quitar' : 'Marcar cambio de aceite en este remito'}">🛢</button>`;
+  const oilKm   = r._oilKmDesde;
+  const oilDue  = oilKm != null && oilKm >= OIL_ALERT_KM;
+  const oilChip = oilKm != null
+    ? `<span class="info-chip oil-chip ${oilDue ? 'is-due' : ''}">🛢 ${oilKm.toLocaleString('es-AR')}/${OIL_INTERVAL_KM.toLocaleString('es-AR')} km</span>`
+    : '';
+  const oilAlert = oilDue
+    ? `<div class="aceite-alert">⚠️ <b>Toca cambiar el aceite</b> — recorrió ${oilKm.toLocaleString('es-AR')} km desde el último cambio (aviso a los ${OIL_ALERT_KM.toLocaleString('es-AR')}).</div>`
+    : '';
+
   return `
     <div class="remito-card ${estado === 'pagado' ? 'card-pagado' : ''} ${r.archivado ? 'card-archivado' : ''}">
       <div class="remito-card-header">
@@ -1237,9 +1297,11 @@ function renderRemitoCard(r) {
           <span class="chofer-chip">${esc(nombre)}</span>
           <span class="fecha-chip">${fmt(r.fecha_carga)}</span>
           ${r.archivado ? `<span class="archivado-tag">Archivado</span>` : ''}
+          ${r.cambio_aceite ? `<span class="aceite-tag">🛢 Aceite</span>` : ''}
         </div>
         <div class="remito-header-actions">
           <button class="btn-edit-remito" data-id="${r.id}" title="Editar remito">✏ Editar</button>
+          ${aceiteBtn}
           ${delBtn}
           ${badge}
         </div>
@@ -1252,6 +1314,7 @@ function renderRemitoCard(r) {
       <div class="remito-info-row">
         ${r.litros ? `<span class="info-chip">⛽ ${r.litros}L</span>` : ''}
         ${r.km != null ? `<span class="info-chip">🛣 ${r.km.toLocaleString('es-AR')} km</span>` : ''}
+        ${oilChip}
       </div>
       ${r.comentarios ? `<div class="remito-comentarios">💬 ${esc(r.comentarios)}</div>` : ''}
       ${r.numero || (kmThumb || thumbs) ? `
@@ -1260,6 +1323,7 @@ function renderRemitoCard(r) {
           ${(kmThumb || thumbs) ? `<div class="fotos-row">${kmThumb}${thumbs}${masTag}</div>` : ''}
         </div>` : ''}
       ${r.pagado && r.fecha_pago ? `<div class="fecha-pago-info">Pagado el ${fmt(r.fecha_pago)}</div>` : ''}
+      ${oilAlert}
       ${acciones}
     </div>
   `;

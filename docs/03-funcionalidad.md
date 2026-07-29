@@ -70,6 +70,21 @@ Botón **👤 Choferes** en "Todos" → `showUsuariosModal`. Permite:
 A partir del alta, ese chofer entra con su nombre + PIN y funciona idéntico a los demás (sus
 remitos, litros y consumo propios), sin tocar nada más.
 
+## Cambio de aceite (admin)
+
+Botón **🛢** al lado de "Editar" en cada card. Al marcarlo, ese remito queda como el punto
+del último cambio de aceite (columna `remitos.cambio_aceite`) y su `km` es la base.
+
+- `computeOilStatus` anota en cada remito `_oilKmDesde` = `km` del remito − `km` del último
+  cambio de aceite del mismo chofer (con `km <= ` el de este). `null` si el chofer todavía no
+  tiene ningún cambio marcado.
+- Cada card muestra un chip de progreso **`🛢 X/30.000 km`**. Cuando `X ≥ 29.000`
+  (`OIL_ALERT_KM`), el chip se pone rojo y aparece una **alerta en el remito**: *"Toca cambiar
+  el aceite"*. El aviso es a los **29.000** (un poco antes de los 30.000 nominales).
+- Marcar un nuevo cambio en un remito más nuevo **resetea** el conteo desde ahí.
+- El aviso es **in-app** sobre la card. (Una notificación push al celular con la app cerrada
+  sería una feature aparte más grande — Web Push + backend.)
+
 ## Editor de remito (admin)
 
 `showEditRemito` permite corregir fecha, N° remito, litros, **km**, **litros pagados**,

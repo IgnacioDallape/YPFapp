@@ -53,7 +53,7 @@ sandbox.supabase = {
 // ── Cargar app.js y exportar las funciones puras ──────────────────────
 const src = readFileSync(APP, 'utf8');
 const exportLine = `
-;globalThis.__T = { esc, fmtLitros, litrosTotal, litrosPagadosOf, litrosPendientes, estadoPago, computeViajes };`;
+;globalThis.__T = { esc, fmtLitros, litrosTotal, litrosPagadosOf, litrosPendientes, estadoPago, computeViajes, computeOilStatus, OIL_ALERT_KM };`;
 vm.createContext(sandbox);
 vm.runInContext(src + exportLine, sandbox, { filename: 'app.js' });
 const T = sandbox.__T;
@@ -220,6 +220,33 @@ const vStr = T.computeViajes([
 ]);
 ok('viajes litros string → número (no concatena)', vStr[0].litros === 80 && typeof vStr[0].litros === 'number');
 ok('viajes litros string → l100 numérico', vStr[0].l100 === 20);
+
+// ── 7) computeOilStatus (cambio de aceite) ───────────────────────────
+ok('OIL_ALERT_KM = 29000', T.OIL_ALERT_KM === 29000);
+
+// Base en km 1000; distintos remitos del chofer 'a'
+const oilR = [
+  { id: 1, chofer_id: 'a', km: 500 },     // antes del cambio → sin base
+  { id: 2, chofer_id: 'a', km: 1000 },    // en el cambio → 0
+  { id: 3, chofer_id: 'a', km: 30000 },   // 29.000 desde el cambio → due
+  { id: 4, chofer_id: 'b', km: 5000 },    // otro chofer sin cambio → null
+];
+T.computeOilStatus(oilR, [{ chofer_id: 'a', km: 1000 }]);
+eq('aceite: antes del cambio → null', oilR[0]._oilKmDesde, null);
+eq('aceite: en el cambio → 0', oilR[1]._oilKmDesde, 0);
+eq('aceite: 29.000 km después → due', oilR[2]._oilKmDesde, 29000);
+ok('aceite: due supera el umbral', oilR[2]._oilKmDesde >= T.OIL_ALERT_KM);
+eq('aceite: otro chofer sin cambio → null', oilR[3]._oilKmDesde, null);
+
+// Dos cambios: cuenta desde el más reciente (<= km del remito)
+const oilR2 = [{ id: 1, chofer_id: 'a', km: 41000 }];
+T.computeOilStatus(oilR2, [{ chofer_id: 'a', km: 1000 }, { chofer_id: 'a', km: 40000 }]);
+eq('aceite: cuenta desde el cambio más reciente', oilR2[0]._oilKmDesde, 1000);
+
+// km null → null, sin romper
+const oilR3 = [{ id: 1, chofer_id: 'a', km: null }];
+T.computeOilStatus(oilR3, [{ chofer_id: 'a', km: 1000 }]);
+eq('aceite: km null → null', oilR3[0]._oilKmDesde, null);
 
 // ── Resumen ───────────────────────────────────────────────────────────
 console.log(`\nRemitosApp · tests del motor`);

@@ -552,6 +552,32 @@ input[type="date"].inp, input[type="month"].inp { cursor: pointer; }
 }
 .aceite-alert b { font-weight: 800; }
 
+/* ── Pago temporario "sin asignar" (deuda card) ── */
+.deuda-pago-btn {
+  margin-top: 12px; width: 100%;
+  background: var(--surface); border: 1px dashed var(--border-strong); color: var(--text-mid);
+  border-radius: var(--radius-sm); padding: 9px; font-family: var(--font);
+  font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.deuda-pago-btn:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-50); }
+
+.pago-temp-box {
+  margin-top: 12px; background: var(--ok-bg); border: 1px solid var(--ok-border);
+  border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.pago-temp-line { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text); }
+.pago-temp-line > span:first-child { color: var(--text-mid); }
+.pago-temp-monto { margin-left: auto; font-weight: 800; color: var(--ok); font-size: 0.98rem; }
+.pago-temp-edit {
+  background: none; border: 1px solid var(--ok-border); color: var(--ok);
+  border-radius: var(--radius-sm); width: 26px; height: 24px; cursor: pointer;
+  font-size: 0.78rem; line-height: 1; flex-shrink: 0; font-family: var(--font);
+}
+.pago-temp-edit:hover { background: var(--ok); color: #fff; }
+.pago-temp-favor { font-size: 0.78rem; color: var(--warn); margin-top: 4px; font-weight: 600; }
+.pago-temp-btn { margin-top: 10px; background: var(--ok); color: #fff; border-color: var(--ok); }
+.pago-temp-btn:hover { background: #166534; }
+
 /* ── Utils ── */
 .hidden { display: none !important; }
 

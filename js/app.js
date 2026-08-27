@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v34 · 2026-06-30';
+const APP_VERSION = 'v35 · 2026-06-30';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -36,6 +36,7 @@ const S = {
   lightboxUrls: [],
   lightboxIdx:  0,
   precioLitro:  0,
+  pagoTemporario: 0,
 };
 
 // =====================================================
@@ -743,6 +744,60 @@ function showPrecioEditor() {
   setTimeout(() => el.querySelector('#precio-input').focus(), 100);
 }
 
+// Registrar (o editar) el pago temporario "sin asignar": se resta del saldo
+// sin tocar remitos. La suma de nuevos remitos sigue corriendo por encima.
+function showPagoTemporarioModal() {
+  const actual = Math.max(0, S.pagoTemporario || 0);
+  const el = document.createElement('div');
+  el.className = 'confirm-overlay';
+  el.innerHTML = `
+    <div class="confirm-box">
+      <div class="confirm-title">Pago sin asignar</div>
+      <div class="confirm-sub">Se <b>resta del saldo</b> pero NO marca ningún remito. Los remitos nuevos se siguen sumando. Cuando tengas las facturas, tocá "Ya tengo las facturas" y marcá los remitos como pagados.</div>
+      <div class="field">
+        <label class="field-label">Total pagado (pesos)</label>
+        <input type="number" id="ptemp-input" class="inp" value="${actual || ''}"
+               step="1000" min="0" placeholder="Ej: 8000000" inputmode="numeric" autocomplete="off">
+      </div>
+      <div class="confirm-btns" style="margin-top:14px">
+        <button class="btn btn-ghost" id="ptemp-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="ptemp-ok">Guardar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const close = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); };
+  el.querySelector('#ptemp-cancel').addEventListener('click', close);
+  el.addEventListener('click', e => { if (e.target === el) close(); });
+  el.querySelector('#ptemp-ok').addEventListener('click', async () => {
+    let v = parseFloat(el.querySelector('#ptemp-input').value);
+    if (isNaN(v) || v < 0) v = 0;
+    await savePagoTemporario(v);
+    toast(v > 0 ? `Pago sin asignar registrado: $ ${Math.round(v).toLocaleString('es-AR')} ✓` : 'Pago sin asignar en $0');
+    close();
+    loadAdminContent();
+  });
+  setTimeout(() => el.querySelector('#ptemp-input').focus(), 100);
+}
+
+// "Ya tengo las facturas": libera el pago sin asignar (vuelve al saldo real)
+// para empezar a marcar los remitos como pagados uno por uno.
+function limpiarPagoTemporario() {
+  const monto = Math.max(0, S.pagoTemporario || 0);
+  const fmtARS = n => '$ ' + Math.round(n).toLocaleString('es-AR');
+  showConfirm(
+    '¿Ya tenés las facturas?',
+    `El saldo vuelve a subir ${fmtARS(monto)}. A partir de ahí marcá los remitos que pagaste como pagados y el saldo baja de nuevo, esta vez con los remitos marcados.`,
+    'Sí, ya las tengo',
+    async () => {
+      await savePagoTemporario(0);
+      toast('Listo. Marcá los remitos que pagaste 👇');
+      loadAdminContent();
+    }
+  );
+}
+
 function showConfirm(titulo, subtitulo, btnLabel, onConfirm) {
   const el = document.createElement('div');
   el.className = 'confirm-overlay';
@@ -817,7 +872,7 @@ async function renderAdmin() {
   });
 
   bindLightbox();
-  await loadPrecioLitro();
+  await Promise.all([loadPrecioLitro(), loadPagoTemporario()]);
   await loadAdminContent();
 }
 
@@ -830,6 +885,19 @@ async function savePrecioLitro(v) {
   const val = String(parseFloat(v) || 0);
   await sb.from('config').upsert({ key: 'precio_litro', value: val });
   S.precioLitro = parseFloat(val);
+}
+
+// Pago temporario "sin asignar": monto que se resta del saldo sin marcar
+// remitos. Vive en config (key/value), no toca ningún remito.
+async function loadPagoTemporario() {
+  const { data } = await sb.from('config').select('value').eq('key', 'pago_temporario').maybeSingle();
+  S.pagoTemporario = Math.max(0, parseFloat(data?.value) || 0);
+}
+
+async function savePagoTemporario(v) {
+  const val = String(Math.max(0, parseFloat(v) || 0));
+  await sb.from('config').upsert({ key: 'pago_temporario', value: val });
+  S.pagoTemporario = parseFloat(val);
 }
 
 async function loadAdminContent() {
@@ -898,24 +966,40 @@ async function loadAdminContent() {
     `;
   }
 
-  // Deuda de combustible (tab "pendientes") — resta lo ya pagado (parcial).
+  // Deuda de combustible (tab "pendientes"). Resta lo pagado parcial y el
+  // pago temporario "sin asignar" (que NO marca remitos).
   if (S.adminTab === 'pendientes') {
     const totalLitros = activos.reduce((a, r) => a + litrosPendientes(r), 0);
-    const deuda = totalLitros * S.precioLitro;
+    const deudaReal   = totalLitros * S.precioLitro;
+    const tempPago    = Math.max(0, S.pagoTemporario || 0);
+    const saldo       = deudaReal - tempPago;
     const fmtARS = n => '$ ' + Math.round(n).toLocaleString('es-AR');
     html += `
       <div class="deuda-card">
         <div class="deuda-head">
           <span class="deuda-label">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            DEUDA DE COMBUSTIBLE
+            SALDO A PAGAR
           </span>
           <button id="btn-edit-precio" class="deuda-edit-btn">✏ Precio</button>
         </div>
-        <div class="deuda-amount">${fmtARS(deuda)}</div>
+        <div class="deuda-amount">${fmtARS(Math.max(0, saldo))}</div>
         <div class="deuda-detail">
-          <b>${fmtLitros(totalLitros)}</b> L pendientes &times; <b>${fmtARS(S.precioLitro)}</b>/L
+          <b>${fmtLitros(totalLitros)}</b> L &times; <b>${fmtARS(S.precioLitro)}</b>/L = <b>${fmtARS(deudaReal)}</b> de deuda
         </div>
+        ${tempPago > 0 ? `
+          <div class="pago-temp-box">
+            <div class="pago-temp-line">
+              <span>💵 Pagado <b>sin asignar</b></span>
+              <span class="pago-temp-monto">− ${fmtARS(tempPago)}</span>
+              <button id="btn-registrar-pago" class="pago-temp-edit" title="Editar monto">✏</button>
+            </div>
+            ${saldo < 0 ? `<div class="pago-temp-favor">Pagaste ${fmtARS(-saldo)} de más</div>` : ''}
+            <button id="btn-tengo-facturas" class="btn btn-full btn-sm pago-temp-btn">✓ Ya tengo las facturas</button>
+          </div>
+        ` : `
+          <button id="btn-registrar-pago" class="deuda-pago-btn">💵 Registrar un pago</button>
+        `}
       </div>
     `;
   }
@@ -979,6 +1063,8 @@ async function loadAdminContent() {
   $('btn-limpiar')?.addEventListener('click', () => { S.filtroChofer = ''; S.filtroMes = ''; loadAdminContent(); });
   $('btn-archivar-pagados')?.addEventListener('click', archivarPagados);
   $('btn-edit-precio')?.addEventListener('click', showPrecioEditor);
+  $('btn-registrar-pago')?.addEventListener('click', showPagoTemporarioModal);
+  $('btn-tengo-facturas')?.addEventListener('click', limpiarPagoTemporario);
   $('btn-subir-remito')?.addEventListener('click', renderAdminUploadRemito);
   $('btn-usuarios')?.addEventListener('click', showUsuariosModal);
   bindAdminListEvents(main);

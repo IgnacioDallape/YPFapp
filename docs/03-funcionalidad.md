@@ -49,6 +49,20 @@ Entra desde "Soy administrador" + contraseña (`ADMIN_PASSWORD`). `renderAdmin` 
   - **Colapsado**: solo chofer + **L/100km**.
   - **Desplegado**: fechas del tramo + **km recorridos** + **litros** + **L/100km**.
 
+## Pago sin asignar (saldo temporario)
+
+Para cuando el admin paga (cheque/transferencia) pero todavía no sabe qué remitos cubre ese pago.
+
+- En la card de deuda (Pendientes), botón **"💵 Registrar un pago"** → ingresa un monto en pesos.
+- Ese monto (`config.pago_temporario`, no toca ningún remito) se **resta del saldo**:
+  `saldo = deuda_real − pago_sin_asignar`. La deuda real (`Σ litros pendientes × precio`)
+  **sigue corriendo**: si entran remitos nuevos, el saldo sube igual.
+- Botón **"✓ Ya tengo las facturas"** → pone el pago sin asignar en 0 (el saldo vuelve a subir).
+  A partir de ahí el admin marca los remitos reales como pagados y el saldo baja de nuevo, esta
+  vez con los remitos marcados (`estadoPago`/`litros_pagados`).
+- Es sólo un ajuste de **display sobre el total**: `loadPagoTemporario`/`savePagoTemporario`
+  guardan en `config`, sin migración.
+
 ## Subir remito por un chofer (admin)
 
 Botón **➕ Subir remito** en "Todos" → `renderAdminUploadRemito`. Reusa el **mismo formulario**

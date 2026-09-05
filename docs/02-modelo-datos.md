@@ -32,6 +32,8 @@ Esquema **real** usado por la app (fuente de verdad: `js/app.js`). El archivo
 | `fecha_pago`     | date        | |
 | `litros_pagados` | numeric     | **pago parcial**: litros ya pagados (default 0) |
 | `archivado`      | boolean     | `true` = archivado ("Limpiar/Archivar pagados") |
+| `cambio_aceite`  | boolean     | se hizo cambio de aceite en este remito (base para el aviso) |
+| `efectivo`       | boolean     | pagado en efectivo → fuera de la deuda, pero cuenta en el consumo |
 | `created_at`     | timestamptz | |
 
 ### `remito_fotos`

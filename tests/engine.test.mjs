@@ -248,6 +248,17 @@ const oilR3 = [{ id: 1, chofer_id: 'a', km: null }];
 T.computeOilStatus(oilR3, [{ chofer_id: 'a', km: 1000 }]);
 eq('aceite: km null → null', oilR3[0]._oilKmDesde, null);
 
+// ── 8) Efectivo (fuera de cuenta corriente) ──────────────────────────
+// No debe litros en la cuenta corriente → 0 (queda fuera de la deuda).
+eq('efectivo: litrosPendientes → 0', T.litrosPendientes({ litros: 100, litros_pagados: 0, efectivo: true }), 0);
+eq('no-efectivo: litrosPendientes normal', T.litrosPendientes({ litros: 100, litros_pagados: 30, efectivo: false }), 70);
+// Pero SÍ cuenta en el consumo (computeViajes no filtra por efectivo).
+const vEfectivo = T.computeViajes([
+  { chofer_id: 'a', fecha_carga: '2026-01-01', km: 1000, litros: 50, choferes: { nombre: 'A' } },
+  { chofer_id: 'a', fecha_carga: '2026-01-05', km: 1400, litros: 80, efectivo: true, choferes: { nombre: 'A' } },
+]);
+ok('efectivo: el consumo lo sigue tomando', vEfectivo.length === 1 && vEfectivo[0].l100 === 20);
+
 // ── Resumen ───────────────────────────────────────────────────────────
 console.log(`\nRemitosApp · tests del motor`);
 console.log(`  ${passed} passed, ${failed} failed  (${passed + failed} total)\n`);

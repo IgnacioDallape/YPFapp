@@ -578,6 +578,28 @@ input[type="date"].inp, input[type="month"].inp { cursor: pointer; }
 .pago-temp-btn { margin-top: 10px; background: var(--ok); color: #fff; border-color: var(--ok); }
 .pago-temp-btn:hover { background: #166534; }
 
+/* ── Efectivo (fuera de cuenta corriente) ── */
+.status-badge.efectivo { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
+.btn-efectivo {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-mid);
+  border-radius: var(--radius-sm); padding: 3px 8px; font-size: 0.9rem; line-height: 1;
+  cursor: pointer; transition: all 0.15s; font-family: var(--font);
+}
+.btn-efectivo:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.btn-efectivo.is-on { background: var(--ok-bg); border-color: var(--ok-border); }
+.efectivo-nota {
+  margin-top: 10px; background: var(--ok-bg); color: var(--ok);
+  border: 1px solid var(--ok-border); border-radius: var(--radius-sm);
+  padding: 8px 12px; font-size: 0.84rem; font-weight: 600; text-align: center;
+}
+.edit-check {
+  display: flex; align-items: center; gap: 9px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px;
+  font-size: 0.86rem; color: var(--text); font-weight: 500;
+}
+.edit-check input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--ok); cursor: pointer; }
+
 /* ── Utils ── */
 .hidden { display: none !important; }
 

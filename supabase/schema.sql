@@ -35,6 +35,7 @@ create table if not exists remitos (
   litros_pagados numeric(10,2) not null default 0,   -- pago parcial (litros)
   archivado      boolean not null default false,     -- "Limpiar pagados" archiva
   cambio_aceite  boolean not null default false,     -- se hizo cambio de aceite en este remito
+  efectivo       boolean not null default false,     -- pagado en efectivo (fuera de cuenta corriente)
   created_at     timestamptz default now()
 );
 
@@ -59,6 +60,7 @@ alter table remitos  add column if not exists foto_km_url    text;
 alter table remitos  add column if not exists litros_pagados numeric(10,2) not null default 0;
 alter table remitos  add column if not exists archivado      boolean not null default false;
 alter table remitos  add column if not exists cambio_aceite  boolean not null default false;
+alter table remitos  add column if not exists efectivo       boolean not null default false;
 alter table remitos  alter column destino_ida drop not null;   -- destinos opcionales
 
 -- ── Índices ──────────────────────────────────────────────────────────

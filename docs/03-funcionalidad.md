@@ -63,6 +63,19 @@ Para cuando el admin paga (cheque/transferencia) pero todavía no sabe qué remi
 - Es sólo un ajuste de **display sobre el total**: `loadPagoTemporario`/`savePagoTemporario`
   guardan en `config`, sin migración.
 
+## Efectivo (fuera de cuenta corriente)
+
+Para cargas pagadas en efectivo (no van a la cuenta corriente con la estación).
+
+- Botón **💵** en la card (al lado de Editar) y checkbox en el editor → marca `remitos.efectivo`.
+- Un remito efectivo **NO suma a la deuda**: `litrosPendientes(r)` devuelve 0 si `r.efectivo`
+  (y queda fuera del conteo "Pendientes de pago"). Muestra badge **"💵 Efectivo"** y no tiene
+  botones de pago.
+- Pero **SÍ cuenta en el consumo/historial**: `computeViajes` usa km + litros sin importar
+  `efectivo`, así que el L/100km de esos km se calcula igual.
+- **Cross-app**: FleetFinanzas lee la misma tabla `remitos`; su deuda de combustible también
+  excluye los efectivo (`remitoLitrosPendientes` + el RPC `remitos_deuda_pendiente`).
+
 ## Subir remito por un chofer (admin)
 
 Botón **➕ Subir remito** en "Todos" → `renderAdminUploadRemito`. Reusa el **mismo formulario**

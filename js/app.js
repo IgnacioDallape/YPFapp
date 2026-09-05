@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v35 · 2026-06-30';
+const APP_VERSION = 'v36 · 2026-08-27';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -80,9 +80,10 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 function litrosTotal(r)     { return Math.max(0, parseFloat(r.litros) || 0); }
 function litrosPagadosOf(r) { return Math.max(0, parseFloat(r.litros_pagados) || 0); }
 
-// Litros que todavía se deben de un remito.
+// Litros que todavía se deben EN LA CUENTA CORRIENTE.
+// Los remitos "efectivo" (pagados fuera de cuenta) no deben nada → 0.
 function litrosPendientes(r) {
-  if (r.pagado) return 0;
+  if (r.efectivo || r.pagado) return 0;
   return Math.max(0, litrosTotal(r) - litrosPagadosOf(r));
 }
 
@@ -1009,7 +1010,7 @@ async function loadAdminContent() {
     const mesKey  = today().slice(0, 7);
     const rMes    = activos.filter(r => r.fecha_carga?.startsWith(mesKey));
     const litros  = rMes.reduce((a, r) => a + (r.litros || 0), 0);
-    const pend    = activos.filter(r => estadoPago(r) !== 'pagado').length;
+    const pend    = activos.filter(r => !r.efectivo && estadoPago(r) !== 'pagado').length;
     html += `
       <div class="stats-row">
         <div class="stat-card">
@@ -1164,6 +1165,8 @@ function bindAdminListEvents(main) {
     b.addEventListener('click', () => showEditRemito(b.dataset.id)));
   main.querySelectorAll('.btn-aceite').forEach(b =>
     b.addEventListener('click', () => toggleAceite(b.dataset.id)));
+  main.querySelectorAll('.btn-efectivo').forEach(b =>
+    b.addEventListener('click', () => toggleEfectivo(b.dataset.id)));
 }
 
 // Marca / desmarca "cambio de aceite" en un remito. El km de ese remito pasa a
@@ -1174,6 +1177,17 @@ async function toggleAceite(id) {
   const { error } = await sb.from('remitos').update({ cambio_aceite: nuevo }).eq('id', id);
   if (error) { toast('No se pudo guardar (¿corriste la migración del aceite?)', 'err'); return; }
   toast(nuevo ? 'Cambio de aceite marcado 🛢 ✓' : 'Cambio de aceite quitado');
+  loadAdminContent();
+}
+
+// Marca / desmarca "pagado en efectivo": el remito queda fuera de la cuenta
+// corriente (no suma a la deuda) pero SÍ sigue contando en el consumo/historial.
+async function toggleEfectivo(id) {
+  const r = _remitosCache[id];
+  const nuevo = !(r && r.efectivo);
+  const { error } = await sb.from('remitos').update({ efectivo: nuevo }).eq('id', id);
+  if (error) { toast('No se pudo guardar (¿corriste la migración de efectivo?)', 'err'); return; }
+  toast(nuevo ? 'Marcado como efectivo 💵 (fuera de cuenta corriente)' : 'Efectivo quitado — vuelve a la cuenta corriente');
   loadAdminContent();
 }
 
@@ -1330,13 +1344,16 @@ function renderRemitoCard(r) {
   const masTag  = fotos.length > 4 ? `<div class="foto-mas">+${fotos.length - 4}</div>` : '';
 
   const estado = estadoPago(r);
+  const esEfectivo = !!r.efectivo;
 
-  // Badge de estado (3 estados)
-  const badge = estado === 'pagado'
-    ? `<span class="status-badge paid">✓ Pagado</span>`
-    : estado === 'parcial'
-      ? `<span class="status-badge partial">◐ ${fmtLitros(litrosPagadosOf(r))}/${fmtLitros(litrosTotal(r))} L</span>`
-      : `<span class="status-badge pending">Pendiente</span>`;
+  // Badge de estado — "Efectivo" si está fuera de cuenta corriente, si no el estado de pago.
+  const badge = esEfectivo
+    ? `<span class="status-badge efectivo">💵 Efectivo</span>`
+    : estado === 'pagado'
+      ? `<span class="status-badge paid">✓ Pagado</span>`
+      : estado === 'parcial'
+        ? `<span class="status-badge partial">◐ ${fmtLitros(litrosPagadosOf(r))}/${fmtLitros(litrosTotal(r))} L</span>`
+        : `<span class="status-badge pending">Pendiente</span>`;
 
   // Botón de borrado individual: solo en la pestaña "Todos"
   const delBtn = S.adminTab === 'todos'
@@ -1347,6 +1364,8 @@ function renderRemitoCard(r) {
   let acciones;
   if (r.archivado) {
     acciones = `<button class="btn btn-ghost btn-full mt-sm btn-desarchivar" data-id="${r.id}">↩ Desarchivar</button>`;
+  } else if (esEfectivo) {
+    acciones = `<div class="efectivo-nota">💵 Pagado en efectivo · no suma a la cuenta corriente (sí al consumo)</div>`;
   } else if (estado === 'parcial') {
     acciones = `
       <div class="pago-parcial-info">Pagado ${fmtLitros(litrosPagadosOf(r))} de ${fmtLitros(litrosTotal(r))} L · faltan ${fmtLitros(litrosPendientes(r))} L</div>
@@ -1367,6 +1386,7 @@ function renderRemitoCard(r) {
 
   // Cambio de aceite: botón (al lado de Editar), chip de progreso y alerta.
   const aceiteBtn = `<button class="btn-aceite ${r.cambio_aceite ? 'is-on' : ''}" data-id="${r.id}" title="${r.cambio_aceite ? 'Cambio de aceite hecho acá — tocá para quitar' : 'Marcar cambio de aceite en este remito'}">🛢</button>`;
+  const efectivoBtn = `<button class="btn-efectivo ${esEfectivo ? 'is-on' : ''}" data-id="${r.id}" title="${esEfectivo ? 'Pagado en efectivo (fuera de cta cte) — tocá para quitar' : 'Marcar pagado en efectivo (no va a la cuenta corriente)'}">💵</button>`;
   const oilKm   = r._oilKmDesde;
   const oilDue  = oilKm != null && oilKm >= OIL_ALERT_KM;
   const oilChip = oilKm != null
@@ -1387,6 +1407,7 @@ function renderRemitoCard(r) {
         </div>
         <div class="remito-header-actions">
           <button class="btn-edit-remito" data-id="${r.id}" title="Editar remito">✏ Editar</button>
+          ${efectivoBtn}
           ${aceiteBtn}
           ${delBtn}
           ${badge}
@@ -1601,6 +1622,11 @@ function showEditRemito(id) {
           <textarea id="e-comentarios" class="inp inp-ta" rows="2">${esc(r.comentarios || '')}</textarea>
         </div>
 
+        <label class="edit-check">
+          <input type="checkbox" id="e-efectivo" ${r.efectivo ? 'checked' : ''}>
+          <span>💵 Pagado en efectivo — no suma a la cuenta corriente (sí al consumo)</span>
+        </label>
+
         <div class="field">
           <label class="field-label">Foto del kilómetro</label>
           <div id="e-km-preview" class="foto-previews"></div>
@@ -1720,6 +1746,7 @@ function showEditRemito(id) {
         destino_ida:    el.querySelector('#e-ida').value.trim() || null,
         destino_vuelta: el.querySelector('#e-vuelta').value.trim() || null,
         comentarios:    el.querySelector('#e-comentarios').value.trim() || null,
+        efectivo:       el.querySelector('#e-efectivo').checked,
         litros_pagados: lpVal,
         pagado:         fully,
         fecha_pago:     fully ? (r.fecha_pago || today()) : null,

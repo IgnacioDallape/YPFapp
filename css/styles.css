@@ -600,6 +600,10 @@ input[type="date"].inp, input[type="month"].inp { cursor: pointer; }
 }
 .edit-check input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--ok); cursor: pointer; }
 
+/* ── Botón "Pegar" foto (portapapeles) ── */
+.foto-btn-paste { border-style: solid; background: var(--surface); color: var(--text-mid); border-color: var(--border-strong); }
+.foto-btn-paste:hover { border-color: var(--blue); background: var(--blue-50); color: var(--blue-deep); }
+
 /* ── Utils ── */
 .hidden { display: none !important; }
 

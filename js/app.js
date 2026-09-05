@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v36 · 2026-08-27';
+const APP_VERSION = 'v37 · 2026-08-27';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -372,11 +372,12 @@ function remitoFormHTML(adminMode, choferes) {
             <label class="field-label">
               Foto del kilómetro &nbsp;<span class="req-badge">obligatoria *</span>
             </label>
-            <div class="foto-actions foto-actions-single">
+            <div class="foto-actions ${adminMode ? '' : 'foto-actions-single'}">
               <label class="foto-btn foto-btn-cam">
                 <input type="file" id="f-foto-km" accept="image/*" capture="environment" class="hidden">
                 📷 Sacar foto del km
               </label>
+              ${adminMode ? `<button type="button" class="foto-btn foto-btn-paste" id="f-foto-km-paste">📋 Pegar</button>` : ''}
             </div>
             <div id="foto-km-preview" class="foto-previews"></div>
           </div>
@@ -391,11 +392,12 @@ function remitoFormHTML(adminMode, choferes) {
             <label class="field-label">
               Fotos del remito &nbsp;<span class="req-badge">mínimo 1 requerida *</span>
             </label>
-            <div class="foto-actions foto-actions-single">
+            <div class="foto-actions ${adminMode ? '' : 'foto-actions-single'}">
               <label class="foto-btn foto-btn-cam">
                 <input type="file" id="f-fotos-cam" accept="image/*" capture="environment" class="hidden">
                 📷 Sacar foto
               </label>
+              ${adminMode ? `<button type="button" class="foto-btn foto-btn-paste" id="f-fotos-paste">📋 Pegar</button>` : ''}
             </div>
             <div id="foto-previews" class="foto-previews"></div>
           </div>
@@ -436,6 +438,8 @@ function renderChofer() {
   $('btn-logout').addEventListener('click', logout);
   $('install-wrap-chofer').appendChild(makeInstallBtn('btn-install-header'));
 }
+
+let _remitoPasteHandler = null; // paste (Ctrl/Cmd+V) handler activo del form de remito
 
 function bindChoferForm() {
   const btnEnviar = $('btn-enviar');
@@ -513,6 +517,54 @@ function bindChoferForm() {
       });
     });
   }
+
+  // Pegar imagen del portapapeles (para el "Subir remito" del admin: no hay que
+  // descargar la foto y buscarla). Botones "📋 Pegar" + atajo Ctrl/Cmd+V.
+  async function pasteImageFromClipboard(target) {
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+      toast('Tu navegador no permite pegar así. Probá Ctrl+V o "Sacar foto".', 'warn'); return;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find(t => t.startsWith('image/'));
+        if (type) {
+          const blob = await item.getType(type);
+          const ext  = (blob.type === 'image/png') ? 'png' : 'jpg';
+          const file = new File([blob], `pegada_${Date.now()}.${ext}`, { type: blob.type || 'image/png' });
+          if (target === 'km') { S.fotoKm = file; renderFotoKmPreview(); }
+          else { S.fotosStaged = [...S.fotosStaged, file]; renderFotoPreviews(); }
+          checkValid();
+          toast('Imagen pegada ✓');
+          return;
+        }
+      }
+      toast('No hay ninguna imagen en el portapapeles', 'warn');
+    } catch (e) {
+      toast('No se pudo pegar. Copiá una imagen primero.', 'err');
+    }
+  }
+  $('f-foto-km-paste')?.addEventListener('click', () => pasteImageFromClipboard('km'));
+  $('f-fotos-paste')?.addEventListener('click', () => pasteImageFromClipboard('fotos'));
+
+  // Ctrl/Cmd+V en cualquier parte del form → agrega la imagen a las fotos del remito.
+  // Se maneja con una var de módulo para no acumular listeners entre re-renders, y
+  // se auto-desactiva si el form ya no está en pantalla.
+  if (_remitoPasteHandler) document.removeEventListener('paste', _remitoPasteHandler);
+  _remitoPasteHandler = (e) => {
+    if (!document.getElementById('foto-previews')) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.type && it.type.startsWith('image/')) {
+        const file = it.getAsFile();
+        if (file) { S.fotosStaged = [...S.fotosStaged, file]; renderFotoPreviews(); checkValid(); toast('Imagen pegada ✓'); }
+        e.preventDefault();
+        return;
+      }
+    }
+  };
+  document.addEventListener('paste', _remitoPasteHandler);
 
   btnEnviar.addEventListener('click', submitRemito);
 }

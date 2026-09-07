@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v38 · 2026-08-27';
+const APP_VERSION = 'v39 · 2026-08-27';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -997,6 +997,7 @@ async function loadAdminContent() {
   // Cache para el editor (incluye activos y archivados)
   _remitosCache = {};
   all.forEach(r => { _remitosCache[r.id] = r; });
+  _choferesList = choferes || [];   // para el selector de chofer del editor
 
   // Cambio de aceite: traer los puntos de cambio y anotar km desde el último.
   // Tolerante: si la columna cambio_aceite no existe todavía, no rompe (sin alertas).
@@ -1647,13 +1648,25 @@ function showPagoParcial(id) {
   setTimeout(() => el.querySelector('#parcial-input').focus(), 100);
 }
 
-// Cache de remitos cargados (para el editor del admin)
+// Cache de remitos + lista de choferes (para el editor del admin)
 let _remitosCache = {};
+let _choferesList = [];
 
 // Editor de remito (solo admin): permite corregir datos y agregar/quitar fotos
 function showEditRemito(id) {
   const r = _remitosCache[id];
   if (!r) { toast('No se encontró el remito', 'err'); return; }
+
+  // Opciones para reasignar el chofer. Incluye el actual aunque no esté en la lista
+  // (p. ej. "NO CORRELACIONADOS") para no perderlo si no se cambia.
+  const _choferOpts = (() => {
+    const list = (_choferesList || []).slice();
+    if (r.chofer_id && !list.some(c => c.id === r.chofer_id)) {
+      list.unshift({ id: r.chofer_id, nombre: r.choferes?.nombre || 'Actual' });
+    }
+    return list.map(c =>
+      `<option value="${c.id}" ${c.id === r.chofer_id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
+  })();
 
   // Fotos nuevas a subir (en memoria hasta guardar) y fotos existentes a borrar
   let _nuevasFotos = [];
@@ -1667,9 +1680,14 @@ function showEditRemito(id) {
   el.innerHTML = `
     <div class="confirm-box edit-remito-box">
       <div class="confirm-title">Editar remito</div>
-      <div class="confirm-sub">Chofer: <b>${r.choferes?.nombre || '—'}</b></div>
+      <div class="confirm-sub">Reasigná el chofer o corregí los datos del remito.</div>
 
       <div class="edit-scroll">
+        <div class="field">
+          <label class="field-label">Chofer</label>
+          <select id="e-chofer" class="inp">${_choferOpts}</select>
+        </div>
+
         <div class="form-row-2">
           <div class="field">
             <label class="field-label">Fecha de carga</label>
@@ -1835,6 +1853,7 @@ function showEditRemito(id) {
       const fully = totL > 0 && lpVal >= totL;
 
       const update = {
+        chofer_id:      el.querySelector('#e-chofer').value || r.chofer_id,
         fecha_carga:    el.querySelector('#e-fecha').value || r.fecha_carga,
         numero:         el.querySelector('#e-numero').value.trim() || null,
         litros:         isNaN(litrosVal) ? null : litrosVal,

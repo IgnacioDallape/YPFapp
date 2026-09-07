@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v40 · 2026-08-27';
+const APP_VERSION = 'v41 · 2026-09-07';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -119,6 +119,28 @@ function computeOilStatus(remitos, oilChanges) {
     let last = null;
     for (const km of list) { if (km <= r.km) last = km; else break; }
     if (last != null) r._oilKmDesde = r.km - last;
+  }
+}
+
+// Marca `_inMerge = true` en TODOS los remitos que forman parte de una unión
+// (el que tiene unir_anterior + la carga base con la que se une, encadenado),
+// para poder pintarlos iguales y ver de un vistazo que están unidos.
+function computeMergeGroups(remitos) {
+  const byChofer = {};
+  for (const r of (remitos || [])) {
+    r._inMerge = false;
+    if (r.km == null) continue;
+    (byChofer[r.chofer_id] = byChofer[r.chofer_id] || []).push(r);
+  }
+  for (const cid in byChofer) {
+    const list = byChofer[cid].slice().sort((a, b) => a.km - b.km);
+    let group = [];
+    const flush = () => { if (group.length >= 2) group.forEach(r => { r._inMerge = true; }); group = []; };
+    for (const r of list) {
+      if (r.unir_anterior && group.length > 0) group.push(r);
+      else { flush(); group = [r]; }
+    }
+    flush();
   }
 }
 
@@ -1007,6 +1029,7 @@ async function loadAdminContent() {
     if (!res.error) oilChanges = res.data || [];
   } catch (e) { /* columna aún no creada */ }
   computeOilStatus(all, oilChanges);
+  computeMergeGroups(all);   // marca los remitos que forman una unión (para pintarlos)
 
   let html = '';
 
@@ -1484,14 +1507,14 @@ function renderRemitoCard(r) {
     : '';
 
   return `
-    <div class="remito-card ${estado === 'pagado' ? 'card-pagado' : ''} ${r.archivado ? 'card-archivado' : ''} ${r.unir_anterior ? 'card-unido' : ''}">
+    <div class="remito-card ${estado === 'pagado' ? 'card-pagado' : ''} ${r.archivado ? 'card-archivado' : ''} ${(r._inMerge || r.unir_anterior) ? 'card-unido' : ''}">
       <div class="remito-card-header">
         <div class="remito-meta">
           <span class="chofer-chip">${esc(nombre)}</span>
           <span class="fecha-chip">${fmt(r.fecha_carga)}</span>
           ${r.archivado ? `<span class="archivado-tag">Archivado</span>` : ''}
           ${r.cambio_aceite ? `<span class="aceite-tag">🛢 Aceite</span>` : ''}
-          ${r.unir_anterior ? `<span class="unir-tag">🔗 Unido al anterior</span>` : ''}
+          ${r.unir_anterior ? `<span class="unir-tag">🔗 Unido al anterior</span>` : (r._inMerge ? `<span class="unir-tag">🔗 Unido con la siguiente</span>` : '')}
         </div>
         <div class="remito-header-actions">
           <button class="btn-edit-remito" data-id="${r.id}" title="Editar remito">✏ Editar</button>

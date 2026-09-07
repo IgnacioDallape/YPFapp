@@ -53,7 +53,7 @@ sandbox.supabase = {
 // ── Cargar app.js y exportar las funciones puras ──────────────────────
 const src = readFileSync(APP, 'utf8');
 const exportLine = `
-;globalThis.__T = { esc, fmtLitros, litrosTotal, litrosPagadosOf, litrosPendientes, estadoPago, computeViajes, computeOilStatus, OIL_ALERT_KM };`;
+;globalThis.__T = { esc, fmtLitros, litrosTotal, litrosPagadosOf, litrosPendientes, estadoPago, computeViajes, computeOilStatus, computeMergeGroups, OIL_ALERT_KM };`;
 vm.createContext(sandbox);
 vm.runInContext(src + exportLine, sandbox, { filename: 'app.js' });
 const T = sandbox.__T;
@@ -290,6 +290,29 @@ const vChain = T.computeViajes([
 ]);
 ok('unir encadenado: 1 viaje km 1000 litros 120 (50+40+30)',
    vChain.length === 1 && vChain[0].km === 1000 && vChain[0].litros === 120);
+
+// ── 10) computeMergeGroups (marcar los remitos unidos) ───────────────
+// Marca _inMerge en TODOS los que forman una unión (base + los unir_anterior).
+const mg = [
+  { id: 1, chofer_id: 'a', km: 1000, litros: 100 },                       // base
+  { id: 2, chofer_id: 'a', km: 1400, litros: 50, unir_anterior: true },   // unido
+  { id: 3, chofer_id: 'a', km: 2000, litros: 80 },                        // suelto
+  { id: 4, chofer_id: 'b', km: 500,  litros: 60, unir_anterior: true },   // unir sin anterior (solo)
+];
+T.computeMergeGroups(mg);
+eq('merge: base marcada', mg[0]._inMerge, true);
+eq('merge: unido marcado', mg[1]._inMerge, true);
+eq('merge: suelto NO marcado', mg[2]._inMerge, false);
+eq('merge: unir sin anterior (grupo de 1) NO marcado', mg[3]._inMerge, false);
+
+// Cadena de 3 (base + 2 unidos): las tres marcadas.
+const mg3 = [
+  { id: 1, chofer_id: 'a', km: 1000, litros: 100 },
+  { id: 2, chofer_id: 'a', km: 1400, litros: 50, unir_anterior: true },
+  { id: 3, chofer_id: 'a', km: 1800, litros: 40, unir_anterior: true },
+];
+T.computeMergeGroups(mg3);
+ok('merge encadenado: las 3 marcadas', mg3.every(r => r._inMerge === true));
 
 // ── Resumen ───────────────────────────────────────────────────────────
 console.log(`\nRemitosApp · tests del motor`);

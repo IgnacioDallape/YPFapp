@@ -600,6 +600,20 @@ input[type="date"].inp, input[type="month"].inp { cursor: pointer; }
 }
 .edit-check input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--ok); cursor: pointer; }
 
+/* ── Unir cargas (tanque no lleno) ── */
+.btn-unir {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-mid);
+  border-radius: var(--radius-sm); padding: 3px 8px; font-size: 0.9rem; line-height: 1;
+  cursor: pointer; transition: all 0.15s; font-family: var(--font);
+}
+.btn-unir:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.btn-unir.is-on { background: var(--blue-50); border-color: var(--blue-200); }
+.unir-tag {
+  background: var(--blue-50); color: var(--blue-deep); border: 1px solid var(--blue-100);
+  font-size: 0.64rem; font-weight: 700; letter-spacing: 0.04em;
+  padding: 2px 8px; border-radius: 999px;
+}
+
 /* ── Botón "Pegar" foto (portapapeles) ── */
 .foto-btn-paste { border-style: solid; background: var(--surface); color: var(--text-mid); border-color: var(--border-strong); }
 .foto-btn-paste:hover { border-color: var(--blue); background: var(--blue-50); color: var(--blue-deep); }

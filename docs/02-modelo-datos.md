@@ -34,6 +34,7 @@ Esquema **real** usado por la app (fuente de verdad: `js/app.js`). El archivo
 | `archivado`      | boolean     | `true` = archivado ("Limpiar/Archivar pagados") |
 | `cambio_aceite`  | boolean     | se hizo cambio de aceite en este remito (base para el aviso) |
 | `efectivo`       | boolean     | pagado en efectivo → fuera de la deuda, pero cuenta en el consumo |
+| `unir_anterior`  | boolean     | tanque no lleno → fusiona el consumo con la carga anterior |
 | `created_at`     | timestamptz | |
 
 ### `remito_fotos`
@@ -85,3 +86,8 @@ consumo        = litros / distancia × 100   →  L/100km
 ```
 Se descartan tramos con distancia ≤ 0 o sin litros válidos. El historial considera **todos**
 los remitos (incluso archivados); solo desaparece un viaje si se **borra** uno de sus remitos.
+
+**Tanque no lleno (`unir_anterior`)**: si una carga no llenó el tanque, el consumo "tanque lleno
+a tanque lleno" da mal. Marcándola con `unir_anterior=true`, `computeViajes` la **fusiona** con la
+carga anterior: suma los litros y avanza el km/fecha, calculando el consumo sobre el tramo
+combinado (encadena si hay varias seguidas). No afecta la deuda, solo el consumo.

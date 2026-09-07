@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v37 · 2026-08-27';
+const APP_VERSION = 'v38 · 2026-08-27';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -1219,6 +1219,8 @@ function bindAdminListEvents(main) {
     b.addEventListener('click', () => toggleAceite(b.dataset.id)));
   main.querySelectorAll('.btn-efectivo').forEach(b =>
     b.addEventListener('click', () => toggleEfectivo(b.dataset.id)));
+  main.querySelectorAll('.btn-unir').forEach(b =>
+    b.addEventListener('click', () => toggleUnir(b.dataset.id)));
 }
 
 // Marca / desmarca "cambio de aceite" en un remito. El km de ese remito pasa a
@@ -1243,12 +1245,26 @@ async function toggleEfectivo(id) {
   loadAdminContent();
 }
 
+// Une / separa un remito con la carga anterior (para cuando el tanque no se
+// llenó completo): los litros se combinan sobre el tramo → consumo real en el Historial.
+async function toggleUnir(id) {
+  const r = _remitosCache[id];
+  const nuevo = !(r && r.unir_anterior);
+  const { error } = await sb.from('remitos').update({ unir_anterior: nuevo }).eq('id', id);
+  if (error) { toast('No se pudo guardar (¿corriste la migración de unir?)', 'err'); return; }
+  toast(nuevo ? 'Unido con la carga anterior 🔗 — el consumo se combina' : 'Separado de la carga anterior');
+  loadAdminContent();
+}
+
 // =====================================================
 // HISTORIAL — consumo L/100km por viaje (carga a carga)
 // =====================================================
 
 // Arma un "viaje" por cada par de cargas consecutivas del mismo chofer.
 // distancia = km(nuevo) − km(anterior); litros = los cargados en el nuevo.
+// Si una carga tiene `unir_anterior` (el tanque no se llenó completo), se fusiona
+// con la carga previa: sus litros se suman y el km/fecha avanzan, para que el
+// consumo se calcule sobre el tramo combinado (tanque lleno a tanque lleno real).
 function computeViajes(remitos) {
   const byChofer = {};
   for (const r of (remitos || [])) {
@@ -1258,18 +1274,35 @@ function computeViajes(remitos) {
   const viajes = [];
   for (const cid in byChofer) {
     const list = byChofer[cid].slice().sort((a, b) => a.km - b.km);
-    for (let i = 1; i < list.length; i++) {
-      const older = list[i - 1], newer = list[i];
+
+    // Fusionar las cargas "unir_anterior" con la anterior (encadena si hay varias).
+    const cargas = [];
+    for (const r of list) {
+      const litros = parseFloat(r.litros) || 0;
+      const nombre = r.choferes?.nombre || null;
+      if (r.unir_anterior && cargas.length > 0) {
+        const prev = cargas[cargas.length - 1];
+        prev.litros += litros;
+        prev.km = r.km;
+        prev.fecha = r.fecha_carga;
+        if (nombre) prev.nombre = nombre;
+      } else {
+        cargas.push({ km: r.km, litros, fecha: r.fecha_carga, nombre });
+      }
+    }
+
+    for (let i = 1; i < cargas.length; i++) {
+      const older = cargas[i - 1], newer = cargas[i];
       const distance = newer.km - older.km;
       if (distance <= 0) continue;
-      if (!newer.litros || newer.litros <= 0) continue;
+      if (newer.litros <= 0) continue;
       viajes.push({
-        chofer:     newer.choferes?.nombre || older.choferes?.nombre || 'Desconocido',
-        fechaDesde: older.fecha_carga,
-        fechaHasta: newer.fecha_carga,
+        chofer:     newer.nombre || older.nombre || 'Desconocido',
+        fechaDesde: older.fecha,
+        fechaHasta: newer.fecha,
         km:         distance,
-        litros:     parseFloat(newer.litros) || 0,
-        l100:       (parseFloat(newer.litros) || 0) / distance * 100,
+        litros:     newer.litros,
+        l100:       newer.litros / distance * 100,
       });
     }
   }
@@ -1281,7 +1314,7 @@ function computeViajes(remitos) {
 async function loadHistorial(main) {
   // Trae TODO el histórico (incluye archivados) para que el consumo no se corte
   // en los bordes de mes. El filtro de mes se aplica sobre el viaje, después.
-  let q = sb.from('remitos').select('chofer_id, fecha_carga, km, litros, choferes(nombre)');
+  let q = sb.from('remitos').select('chofer_id, fecha_carga, km, litros, unir_anterior, choferes(nombre)');
   if (S.filtroChofer) q = q.eq('chofer_id', S.filtroChofer);
 
   const [{ data: remitos, error }, { data: choferes }] = await Promise.all([
@@ -1439,6 +1472,7 @@ function renderRemitoCard(r) {
   // Cambio de aceite: botón (al lado de Editar), chip de progreso y alerta.
   const aceiteBtn = `<button class="btn-aceite ${r.cambio_aceite ? 'is-on' : ''}" data-id="${r.id}" title="${r.cambio_aceite ? 'Cambio de aceite hecho acá — tocá para quitar' : 'Marcar cambio de aceite en este remito'}">🛢</button>`;
   const efectivoBtn = `<button class="btn-efectivo ${esEfectivo ? 'is-on' : ''}" data-id="${r.id}" title="${esEfectivo ? 'Pagado en efectivo (fuera de cta cte) — tocá para quitar' : 'Marcar pagado en efectivo (no va a la cuenta corriente)'}">💵</button>`;
+  const unirBtn = `<button class="btn-unir ${r.unir_anterior ? 'is-on' : ''}" data-id="${r.id}" title="${r.unir_anterior ? 'Unido con la carga anterior (tanque no lleno) — tocá para separar' : 'Unir con la carga anterior (tanque no lleno) para el consumo real'}">🔗</button>`;
   const oilKm   = r._oilKmDesde;
   const oilDue  = oilKm != null && oilKm >= OIL_ALERT_KM;
   const oilChip = oilKm != null
@@ -1456,10 +1490,12 @@ function renderRemitoCard(r) {
           <span class="fecha-chip">${fmt(r.fecha_carga)}</span>
           ${r.archivado ? `<span class="archivado-tag">Archivado</span>` : ''}
           ${r.cambio_aceite ? `<span class="aceite-tag">🛢 Aceite</span>` : ''}
+          ${r.unir_anterior ? `<span class="unir-tag">🔗 Unido al anterior</span>` : ''}
         </div>
         <div class="remito-header-actions">
           <button class="btn-edit-remito" data-id="${r.id}" title="Editar remito">✏ Editar</button>
           ${efectivoBtn}
+          ${unirBtn}
           ${aceiteBtn}
           ${delBtn}
           ${badge}
@@ -1494,6 +1530,9 @@ function renderRemitoCard(r) {
 function renderConsumoSeparator(newer, older) {
   if (!newer || !older) return '';
   if (newer.chofer_id !== older.chofer_id) return '';
+  // Si esta carga está "unida" con la anterior (tanque no lleno), el consumo par-a-par
+  // no aplica: el combinado real se ve en el Historial. No mostramos el separador.
+  if (newer.unir_anterior) return '';
   if (newer.km == null || older.km == null) return '';
   const distance = newer.km - older.km;
   if (distance <= 0) return '';
@@ -1679,6 +1718,11 @@ function showEditRemito(id) {
           <span>💵 Pagado en efectivo — no suma a la cuenta corriente (sí al consumo)</span>
         </label>
 
+        <label class="edit-check">
+          <input type="checkbox" id="e-unir" ${r.unir_anterior ? 'checked' : ''}>
+          <span>🔗 Unir con la carga anterior — tanque no lleno (combina el consumo)</span>
+        </label>
+
         <div class="field">
           <label class="field-label">Foto del kilómetro</label>
           <div id="e-km-preview" class="foto-previews"></div>
@@ -1799,6 +1843,7 @@ function showEditRemito(id) {
         destino_vuelta: el.querySelector('#e-vuelta').value.trim() || null,
         comentarios:    el.querySelector('#e-comentarios').value.trim() || null,
         efectivo:       el.querySelector('#e-efectivo').checked,
+        unir_anterior:  el.querySelector('#e-unir').checked,
         litros_pagados: lpVal,
         pagado:         fully,
         fecha_pago:     fully ? (r.fecha_pago || today()) : null,

@@ -259,6 +259,38 @@ const vEfectivo = T.computeViajes([
 ]);
 ok('efectivo: el consumo lo sigue tomando', vEfectivo.length === 1 && vEfectivo[0].l100 === 20);
 
+// ── 9) Unir cargas (tanque no lleno) en computeViajes ────────────────
+// La carga marcada unir_anterior fusiona sus litros con la anterior sobre el
+// tramo combinado → un solo viaje con litros sumados y la distancia total.
+const vUnir = T.computeViajes([
+  { chofer_id: 'a', fecha_carga: '2026-01-01', km: 1000, litros: 100, choferes: { nombre: 'A' } }, // llenó
+  { chofer_id: 'a', fecha_carga: '2026-01-05', km: 1400, litros: 50,  choferes: { nombre: 'A' } }, // parcial
+  { chofer_id: 'a', fecha_carga: '2026-01-09', km: 2000, litros: 80, unir_anterior: true, choferes: { nombre: 'A' } },
+]);
+ok('unir: 1 viaje combinado (no 2)', vUnir.length === 1);
+ok('unir: km combinado = 1000 (1000→2000)', vUnir[0].km === 1000);
+ok('unir: litros combinados = 130 (50+80)', vUnir[0].litros === 130);
+ok('unir: l100 = 13 (130/1000)', vUnir[0].l100 === 13);
+ok('unir: fechaDesde de la base y fechaHasta del más nuevo',
+   vUnir[0].fechaDesde === '2026-01-01' && vUnir[0].fechaHasta === '2026-01-09');
+
+// unir_anterior en la PRIMERA carga (sin anterior) → se trata normal, no rompe.
+const vUnir0 = T.computeViajes([
+  { chofer_id: 'a', fecha_carga: '2026-01-01', km: 1000, litros: 100, unir_anterior: true, choferes: { nombre: 'A' } },
+  { chofer_id: 'a', fecha_carga: '2026-01-05', km: 1400, litros: 80,  choferes: { nombre: 'A' } },
+]);
+ok('unir sin carga anterior → viaje normal', vUnir0.length === 1 && vUnir0[0].km === 400 && vUnir0[0].litros === 80);
+
+// Encadenado: dos unir_anterior seguidas suman todo en un tramo.
+const vChain = T.computeViajes([
+  { chofer_id: 'a', fecha_carga: '2026-01-01', km: 1000, litros: 100, choferes: { nombre: 'A' } },
+  { chofer_id: 'a', fecha_carga: '2026-01-05', km: 1400, litros: 50,  choferes: { nombre: 'A' } },
+  { chofer_id: 'a', fecha_carga: '2026-01-09', km: 1800, litros: 40, unir_anterior: true, choferes: { nombre: 'A' } },
+  { chofer_id: 'a', fecha_carga: '2026-01-13', km: 2000, litros: 30, unir_anterior: true, choferes: { nombre: 'A' } },
+]);
+ok('unir encadenado: 1 viaje km 1000 litros 120 (50+40+30)',
+   vChain.length === 1 && vChain[0].km === 1000 && vChain[0].litros === 120);
+
 // ── Resumen ───────────────────────────────────────────────────────────
 console.log(`\nRemitosApp · tests del motor`);
 console.log(`  ${passed} passed, ${failed} failed  (${passed + failed} total)\n`);

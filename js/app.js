@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v39 · 2026-08-27';
+const APP_VERSION = 'v40 · 2026-08-27';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -1484,7 +1484,7 @@ function renderRemitoCard(r) {
     : '';
 
   return `
-    <div class="remito-card ${estado === 'pagado' ? 'card-pagado' : ''} ${r.archivado ? 'card-archivado' : ''}">
+    <div class="remito-card ${estado === 'pagado' ? 'card-pagado' : ''} ${r.archivado ? 'card-archivado' : ''} ${r.unir_anterior ? 'card-unido' : ''}">
       <div class="remito-card-header">
         <div class="remito-meta">
           <span class="chofer-chip">${esc(nombre)}</span>

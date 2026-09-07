@@ -608,6 +608,12 @@ input[type="date"].inp, input[type="month"].inp { cursor: pointer; }
 }
 .btn-unir:hover { background: var(--surface-2); border-color: var(--border-strong); }
 .btn-unir.is-on { background: var(--blue-50); border-color: var(--blue-200); }
+/* Card de un remito unido con el anterior: tinte azul + barra izquierda */
+.remito-card.card-unido {
+  background: var(--blue-50);
+  border-color: var(--blue-200);
+  border-left: 4px solid var(--blue);
+}
 .unir-tag {
   background: var(--blue-50); color: var(--blue-deep); border: 1px solid var(--blue-100);
   font-size: 0.64rem; font-weight: 700; letter-spacing: 0.04em;

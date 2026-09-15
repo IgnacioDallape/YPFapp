@@ -314,6 +314,20 @@ const mg3 = [
 T.computeMergeGroups(mg3);
 ok('merge encadenado: las 3 marcadas', mg3.every(r => r._inMerge === true));
 
+// La BASE lleva los agregados del grupo (para el consumo combinado del separador).
+// Caso real: base 04/09 (km 1045286, 300L) + unido 15/09 (km 1046286, 725L).
+const mgAgg = [
+  { id: 1, chofer_id: 'a', km: 1045286, litros: 300, fecha_carga: '2026-09-04' },
+  { id: 2, chofer_id: 'a', km: 1046286, litros: 725, fecha_carga: '2026-09-15', unir_anterior: true },
+];
+T.computeMergeGroups(mgAgg);
+eq('agg: base tiene km del tope', mgAgg[0]._groupTopKm, 1046286);
+eq('agg: base tiene litros combinados (300+725=1025)', mgAgg[0]._groupLitros, 1025);
+eq('agg: base tiene fecha del tope', mgAgg[0]._groupTopFecha, '2026-09-15');
+// El consumo real del tramo 31/08(km 1043401) → grupo: 1025 / (1046286-1043401=2885) * 100 = 35.5
+ok('agg: consumo combinado ≈ 35.5', +(1025 / (1046286 - 1043401) * 100).toFixed(1) === 35.5);
+eq('agg: el unido NO lleva agregados', mgAgg[1]._groupTopKm, null);
+
 // ── Resumen ───────────────────────────────────────────────────────────
 console.log(`\nRemitosApp · tests del motor`);
 console.log(`  ${passed} passed, ${failed} failed  (${passed + failed} total)\n`);

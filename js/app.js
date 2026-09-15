@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v41 · 2026-09-07';
+const APP_VERSION = 'v42 · 2026-09-15';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -129,13 +129,25 @@ function computeMergeGroups(remitos) {
   const byChofer = {};
   for (const r of (remitos || [])) {
     r._inMerge = false;
+    r._groupTopKm = null; r._groupLitros = null; r._groupTopFecha = null;
     if (r.km == null) continue;
     (byChofer[r.chofer_id] = byChofer[r.chofer_id] || []).push(r);
   }
   for (const cid in byChofer) {
     const list = byChofer[cid].slice().sort((a, b) => a.km - b.km);
     let group = [];
-    const flush = () => { if (group.length >= 2) group.forEach(r => { r._inMerge = true; }); group = []; };
+    const flush = () => {
+      if (group.length >= 2) {
+        const base = group[0], top = group[group.length - 1];
+        group.forEach(r => { r._inMerge = true; });
+        // La base lleva los agregados del grupo (para el consumo combinado):
+        // km del tope y suma de litros de todas las cargas unidas.
+        base._groupTopKm    = top.km;
+        base._groupLitros   = group.reduce((s, r) => s + (parseFloat(r.litros) || 0), 0);
+        base._groupTopFecha = top.fecha_carga;
+      }
+      group = [];
+    };
     for (const r of list) {
       if (r.unir_anterior && group.length > 0) group.push(r);
       else { flush(); group = [r]; }
@@ -1558,10 +1570,15 @@ function renderConsumoSeparator(newer, older) {
   // no aplica: el combinado real se ve en el Historial. No mostramos el separador.
   if (newer.unir_anterior) return '';
   if (newer.km == null || older.km == null) return '';
-  const distance = newer.km - older.km;
+  // Si "newer" es la base de una unión (tanque no lleno), usar los agregados del
+  // grupo: km del tope y litros combinados de todas las cargas unidas.
+  const nkm     = newer._groupTopKm != null ? newer._groupTopKm : newer.km;
+  const nlitros = newer._groupLitros != null ? newer._groupLitros : (parseFloat(newer.litros) || 0);
+  const nfecha  = newer._groupTopFecha || newer.fecha_carga;
+  const distance = nkm - older.km;
   if (distance <= 0) return '';
-  if (!newer.litros || newer.litros <= 0) return '';
-  const l100 = (newer.litros / distance) * 100;
+  if (!nlitros || nlitros <= 0) return '';
+  const l100 = (nlitros / distance) * 100;
 
   const iconRoute = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21L8 3"/><path d="M21 21L16 3"/><path d="M12 5v2"/><path d="M12 11v2"/><path d="M12 17v2"/></svg>`;
   const iconFuel  = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M3 22h14"/><path d="M4 13h12"/><path d="M16 8h1a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg>`;
@@ -1571,7 +1588,7 @@ function renderConsumoSeparator(newer, older) {
     <div class="consumo-separator">
       <div class="consumo-header">
         <span class="consumo-pill">VIAJE</span>
-        <span class="consumo-dates">${fmt(older.fecha_carga)} <span class="consumo-arrow">→</span> ${fmt(newer.fecha_carga)}</span>
+        <span class="consumo-dates">${fmt(older.fecha_carga)} <span class="consumo-arrow">→</span> ${fmt(nfecha)}</span>
       </div>
       <div class="consumo-grid">
         <div class="consumo-cell">
@@ -1581,7 +1598,7 @@ function renderConsumoSeparator(newer, older) {
         <div class="consumo-vdiv"></div>
         <div class="consumo-cell">
           ${iconFuel}
-          <span class="consumo-value">${newer.litros}<span class="consumo-unit">L</span></span>
+          <span class="consumo-value">${fmtLitros(nlitros)}<span class="consumo-unit">L</span></span>
         </div>
         <div class="consumo-vdiv"></div>
         <div class="consumo-cell consumo-cell-hl">

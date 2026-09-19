@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v42 · 2026-09-15';
+const APP_VERSION = 'v44 · 2026-09-19';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -929,6 +929,9 @@ async function renderAdmin() {
         <button class="tab-btn ${S.adminTab === 'historial' ? 'active' : ''}" data-tab="historial">
           Historial
         </button>
+        <button class="tab-btn ${S.adminTab === 'dashboard' ? 'active' : ''}" data-tab="dashboard">
+          Dashboard
+        </button>
       </div>
       <main class="admin-main" id="admin-main">
         <div class="loading-inline">Cargando...</div>
@@ -951,6 +954,7 @@ async function renderAdmin() {
       S.adminTab     = b.dataset.tab;
       S.filtroChofer = '';
       S.filtroMes    = '';
+      _buscarNumero  = '';   // el buscador es por pestaña
       document.querySelectorAll('.tab-btn').forEach(x =>
         x.classList.toggle('active', x.dataset.tab === S.adminTab)
       );
@@ -987,59 +991,69 @@ async function savePagoTemporario(v) {
   S.pagoTemporario = parseFloat(val);
 }
 
-async function loadAdminContent() {
+// useCache=true re-renderiza desde la memoria (sin red): se usa tras marcar
+// pagado / parcial / toggles, que cambian UN remito ya cacheado pero NO el
+// conjunto. Evita re-descargar todos los remitos + fotos en cada acción.
+async function loadAdminContent(useCache = false) {
   const main = $('admin-main');
   if (!main) return;
-  main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
 
-  // El Historial tiene su propio flujo (calcula viajes sobre todo el histórico).
+  // El Historial y el Dashboard tienen su propio flujo (calculan sobre todo el histórico).
   if (S.adminTab === 'historial') return loadHistorial(main);
+  if (S.adminTab === 'dashboard') return loadDashboard(main);
 
-  let query = sb
-    .from('remitos')
-    .select('*, choferes(nombre), remito_fotos(storage_url)')
-    .order('fecha_carga', { ascending: false })
-    .order('created_at', { ascending: false });
+  let all, choferes, oilChanges;
 
-  // Pendientes ahora muestra todo lo NO archivado (pendientes + parciales +
-  // pagados-no-archivados). Los pagados solo se van con "Archivar pagados".
-  if (S.adminTab === 'pendientes') query = query.eq('archivado', false);
-  if (S.filtroChofer)              query = query.eq('chofer_id', S.filtroChofer);
-  if (S.filtroMes) {
-    const [y, m] = S.filtroMes.split('-');
-    const from = `${y}-${m}-01`;
-    const to   = new Date(+y, +m, 0).toISOString().slice(0, 10);
-    query = query.gte('fecha_carga', from).lte('fecha_carga', to);
+  if (useCache) {
+    all        = Object.values(_remitosCache);
+    choferes   = _choferesList || [];
+    oilChanges = _oilChangesCache || [];
+  } else {
+    main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
+    let query = sb
+      .from('remitos')
+      .select('*, choferes(nombre), remito_fotos(storage_url)')
+      .order('fecha_carga', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    // Pendientes muestra todo lo NO archivado. Los pagados solo se van con "Archivar".
+    if (S.adminTab === 'pendientes') query = query.eq('archivado', false);
+    if (S.filtroChofer)              query = query.eq('chofer_id', S.filtroChofer);
+    if (S.filtroMes) {
+      const [y, m] = S.filtroMes.split('-');
+      const from = `${y}-${m}-01`;
+      const to   = new Date(+y, +m, 0).toISOString().slice(0, 10);
+      query = query.gte('fecha_carga', from).lte('fecha_carga', to);
+    }
+
+    const [{ data: remitosRaw, error: rErr }, { data: chData }] = await Promise.all([
+      query,
+      sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre'),
+    ]);
+    if (rErr) {
+      main.innerHTML = `<p class="empty-msg">Error al cargar remitos. Verificá tu conexión.</p>`;
+      return;
+    }
+    all = remitosRaw || [];
+    choferes = chData || [];
+
+    // Cache (para el editor y para re-render sin red; incluye activos y archivados)
+    _remitosCache = {};
+    all.forEach(r => { _remitosCache[r.id] = r; });
+    _choferesList = choferes;
+
+    // Cambio de aceite: puntos de cambio (tolerante si la columna no existe).
+    oilChanges = [];
+    try {
+      const res = await sb.from('remitos').select('chofer_id, km').eq('cambio_aceite', true);
+      if (!res.error) oilChanges = res.data || [];
+    } catch (e) { /* columna aún no creada */ }
+    _oilChangesCache = oilChanges;
   }
 
-  const [{ data: remitosRaw, error: rErr }, { data: choferes }] = await Promise.all([
-    query,
-    sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre'),
-  ]);
-
-  if (rErr) {
-    main.innerHTML = `<p class="empty-msg">Error al cargar remitos. Verificá tu conexión.</p>`;
-    return;
-  }
-
-  // En "Todos" separamos activos de archivados: los archivados van en una
-  // sección colapsable al final (NO se pierden, siguen en el Historial).
-  const all        = remitosRaw || [];
+  // En "Todos" separamos activos de archivados (sección colapsable al final).
   const activos    = S.adminTab === 'todos' ? all.filter(r => !r.archivado) : all;
   const archivados = S.adminTab === 'todos' ? all.filter(r =>  r.archivado) : [];
-
-  // Cache para el editor (incluye activos y archivados)
-  _remitosCache = {};
-  all.forEach(r => { _remitosCache[r.id] = r; });
-  _choferesList = choferes || [];   // para el selector de chofer del editor
-
-  // Cambio de aceite: traer los puntos de cambio y anotar km desde el último.
-  // Tolerante: si la columna cambio_aceite no existe todavía, no rompe (sin alertas).
-  let oilChanges = [];
-  try {
-    const res = await sb.from('remitos').select('chofer_id, km').eq('cambio_aceite', true);
-    if (!res.error) oilChanges = res.data || [];
-  } catch (e) { /* columna aún no creada */ }
   computeOilStatus(all, oilChanges);
   computeMergeGroups(all);   // marca los remitos que forman una unión (para pintarlos)
 
@@ -1131,6 +1145,8 @@ async function loadAdminContent() {
   if (!activos.length) {
     html += `<p class="empty-msg">${S.adminTab === 'pendientes' ? '✓ Sin remitos pendientes' : 'No hay remitos cargados'}</p>`;
   } else {
+    // Buscador por N° de remito (Pendientes y Todos), útil al marcar pagado.
+    if (S.adminTab === 'pendientes' || S.adminTab === 'todos') html += buscadorHTML();
     html += renderRemitoList(activos);
   }
 
@@ -1156,6 +1172,7 @@ async function loadAdminContent() {
   $('btn-tengo-facturas')?.addEventListener('click', limpiarPagoTemporario);
   $('btn-subir-remito')?.addEventListener('click', renderAdminUploadRemito);
   $('btn-usuarios')?.addEventListener('click', showUsuariosModal);
+  bindBuscador(main);
   bindAdminListEvents(main);
 }
 
@@ -1219,6 +1236,64 @@ function filtrosHTML(choferes) {
   `;
 }
 
+// Buscador por N° de remito. Se muestra arriba de la lista en Pendientes y Todos.
+// Filtra las cards ya renderizadas (sin volver a pedir datos ni re-dibujar), así
+// no pierde el foco al tipear y el filtro se mantiene tras marcar pagado.
+function buscadorHTML() {
+  const q = _buscarNumero || '';
+  return `
+    <div class="buscador-remito">
+      <svg class="buscador-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+      <input type="search" id="buscar-remito" class="buscador-input" placeholder="Buscar por N° de remito…"
+             value="${esc(q)}" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="search" enterkeyhint="search">
+      <button id="buscar-clear" class="buscador-clear" title="Limpiar búsqueda" ${q ? '' : 'hidden'}>✕</button>
+    </div>
+    <div id="buscar-empty" class="buscador-empty" hidden>Sin remitos con ese número</div>
+  `;
+}
+
+// Aplica el filtro del buscador sobre las cards ya en el DOM (activas + archivadas).
+// Oculta las que no matchean y los separadores de consumo mientras se busca.
+function aplicarBuscadorRemitos(main) {
+  const root = main || $('admin-main');
+  if (!root) return;
+  const q = (_buscarNumero || '').trim().toLowerCase();
+  const cards = root.querySelectorAll('.remito-card');
+  let visibles = 0;
+  cards.forEach(card => {
+    const num = card.dataset.num || '';
+    const match = !q || num.includes(q);
+    card.style.display = match ? '' : 'none';
+    if (match) visibles++;
+  });
+  // Los separadores de consumo solo tienen sentido en la lista completa.
+  root.querySelectorAll('.consumo-separator').forEach(sep => {
+    sep.style.display = q ? 'none' : '';
+  });
+  const empty = root.querySelector('#buscar-empty');
+  if (empty) empty.hidden = !(q && visibles === 0);
+  const clear = root.querySelector('#buscar-clear');
+  if (clear) clear.hidden = !q;
+}
+
+// Engancha el input del buscador (filtra en vivo, en el lugar).
+function bindBuscador(main) {
+  const input = main.querySelector('#buscar-remito');
+  if (input) {
+    input.addEventListener('input', () => {
+      _buscarNumero = input.value;
+      aplicarBuscadorRemitos(main);
+    });
+  }
+  main.querySelector('#buscar-clear')?.addEventListener('click', () => {
+    _buscarNumero = '';
+    if (input) { input.value = ''; input.focus(); }
+    aplicarBuscadorRemitos(main);
+  });
+  // Reaplicar el filtro vigente (p. ej. tras marcar pagado con búsqueda activa).
+  if ((_buscarNumero || '').trim()) aplicarBuscadorRemitos(main);
+}
+
 // Lista de cards con separadores de consumo entre cargas consecutivas.
 function renderRemitoList(remitos) {
   const pieces = [];
@@ -1267,7 +1342,17 @@ async function toggleAceite(id) {
   const { error } = await sb.from('remitos').update({ cambio_aceite: nuevo }).eq('id', id);
   if (error) { toast('No se pudo guardar (¿corriste la migración del aceite?)', 'err'); return; }
   toast(nuevo ? 'Cambio de aceite marcado 🛢 ✓' : 'Cambio de aceite quitado');
-  loadAdminContent();
+  if (r) r.cambio_aceite = nuevo;
+  // Los puntos de cambio de aceite son de TODA la tabla, no del subconjunto que
+  // está en pantalla (puede haber uno en un mes anterior o en un remito
+  // archivado, fuera de _remitosCache). Los re-consulto DB-wide —es una query
+  // mínima de 2 columnas, sin fotos— para no perder referencias y que la alerta
+  // salga bien. Después re-renderizo sin volver a bajar remitos ni fotos.
+  try {
+    const res = await sb.from('remitos').select('chofer_id, km').eq('cambio_aceite', true);
+    if (!res.error) _oilChangesCache = res.data || [];
+  } catch (e) { /* columna aún no creada */ }
+  loadAdminContent(true);
 }
 
 // Marca / desmarca "pagado en efectivo": el remito queda fuera de la cuenta
@@ -1278,7 +1363,8 @@ async function toggleEfectivo(id) {
   const { error } = await sb.from('remitos').update({ efectivo: nuevo }).eq('id', id);
   if (error) { toast('No se pudo guardar (¿corriste la migración de efectivo?)', 'err'); return; }
   toast(nuevo ? 'Marcado como efectivo 💵 (fuera de cuenta corriente)' : 'Efectivo quitado — vuelve a la cuenta corriente');
-  loadAdminContent();
+  if (r) r.efectivo = nuevo;
+  loadAdminContent(true);
 }
 
 // Une / separa un remito con la carga anterior (para cuando el tanque no se
@@ -1289,7 +1375,8 @@ async function toggleUnir(id) {
   const { error } = await sb.from('remitos').update({ unir_anterior: nuevo }).eq('id', id);
   if (error) { toast('No se pudo guardar (¿corriste la migración de unir?)', 'err'); return; }
   toast(nuevo ? 'Unido con la carga anterior 🔗 — el consumo se combina' : 'Separado de la carga anterior');
-  loadAdminContent();
+  if (r) r.unir_anterior = nuevo;
+  loadAdminContent(true);
 }
 
 // =====================================================
@@ -1333,6 +1420,7 @@ function computeViajes(remitos) {
       if (distance <= 0) continue;
       if (newer.litros <= 0) continue;
       viajes.push({
+        chofer_id:  cid,
         chofer:     newer.nombre || older.nombre || 'Desconocido',
         fechaDesde: older.fecha,
         fechaHasta: newer.fecha,
@@ -1345,6 +1433,166 @@ function computeViajes(remitos) {
   // Más recientes primero (por fecha de llegada).
   viajes.sort((a, b) => (a.fechaHasta < b.fechaHasta ? 1 : a.fechaHasta > b.fechaHasta ? -1 : 0));
   return viajes;
+}
+
+// =====================================================
+// DASHBOARD — resumen por chofer + antigüedad de la deuda
+// =====================================================
+// Función pura (testeable): a partir de TODOS los remitos calcula, por chofer,
+// los litros cargados mes a mes y el consumo promedio (L/100km, tanque a tanque
+// reusando computeViajes), y a nivel general el remito más viejo NO pagado
+// (para saber qué antigüedad tiene la cuenta sin pagar).
+function computeDashboard(remitos) {
+  const list = remitos || [];
+
+  // Consumo (viajes) agrupado por chofer_id — misma matemática que el Historial.
+  const viajesByChofer = {};
+  for (const v of computeViajes(list)) {
+    (viajesByChofer[v.chofer_id] = viajesByChofer[v.chofer_id] || []).push(v);
+  }
+
+  // Agrupar remitos por chofer para litros mensuales + nombre.
+  const byChofer = {};
+  for (const r of list) {
+    const cid = r.chofer_id;
+    if (cid == null) continue;
+    const g = byChofer[cid] || (byChofer[cid] = { chofer_id: cid, nombre: null, meses: {}, totalLitros: 0 });
+    if (r.choferes && r.choferes.nombre) g.nombre = r.choferes.nombre;
+    const litros = parseFloat(r.litros) || 0;
+    g.totalLitros += litros;
+    const mes = (r.fecha_carga || '').slice(0, 7);   // 'YYYY-MM'
+    if (mes) g.meses[mes] = (g.meses[mes] || 0) + litros;
+  }
+
+  const choferes = Object.values(byChofer).map(g => {
+    const vs = viajesByChofer[g.chofer_id] || [];
+    const totalKm          = vs.reduce((a, v) => a + v.km, 0);
+    const totalLitrosViaje = vs.reduce((a, v) => a + v.litros, 0);
+    const promedioL100     = totalKm > 0 ? (totalLitrosViaje / totalKm) * 100 : null;
+    const meses = Object.keys(g.meses)
+      .map(mes => ({ mes, litros: g.meses[mes] }))
+      .sort((a, b) => (a.mes < b.mes ? 1 : a.mes > b.mes ? -1 : 0));   // recientes primero
+    const maxMesLitros = meses.reduce((m, x) => Math.max(m, x.litros), 0);
+    return {
+      chofer_id: g.chofer_id,
+      nombre: g.nombre || 'Desconocido',
+      totalLitros: g.totalLitros,
+      totalKm,
+      promedioL100,
+      meses,
+      maxMesLitros,
+    };
+  }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+  // Remito más viejo NO pagado (con litros pendientes en cuenta corriente).
+  let masViejo = null;
+  for (const r of list) {
+    if (litrosPendientes(r) <= 0) continue;   // pagado/efectivo/sin pendiente → no cuenta
+    if (!r.fecha_carga) continue;
+    if (!masViejo || r.fecha_carga < masViejo.fecha) {
+      masViejo = {
+        fecha:  r.fecha_carga,
+        numero: r.numero || null,
+        chofer: (r.choferes && r.choferes.nombre) || 'Desconocido',
+        litrosPendientes: litrosPendientes(r),
+      };
+    }
+  }
+
+  return { choferes, masViejo };
+}
+
+// Días transcurridos entre una fecha 'YYYY-MM-DD' y hoy (>= 0).
+function diasDesde(fecha) {
+  if (!fecha) return 0;
+  const d0 = new Date(fecha + 'T12:00:00');
+  const d1 = new Date(today() + 'T12:00:00');
+  return Math.max(0, Math.round((d1 - d0) / 86400000));
+}
+
+// 'YYYY-MM' → 'sep 2026'
+function fmtMes(mes) {
+  if (!mes) return '';
+  const d = new Date(mes + '-01T12:00:00');
+  return d.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
+}
+
+async function loadDashboard(main) {
+  main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
+  const { data: remitos, error } = await sb
+    .from('remitos')
+    .select('chofer_id, fecha_carga, km, litros, unir_anterior, efectivo, pagado, litros_pagados, numero, choferes(nombre)');
+
+  if (error) {
+    main.innerHTML = `<p class="empty-msg">Error al cargar el dashboard. Verificá tu conexión.</p>`;
+    return;
+  }
+
+  const { choferes, masViejo } = computeDashboard(remitos || []);
+  let html = '';
+
+  // Antigüedad de la cuenta sin pagar (remito pendiente más viejo).
+  if (masViejo) {
+    const dias = diasDesde(masViejo.fecha);
+    html += `
+      <div class="dash-deuda-card">
+        <div class="dash-deuda-head">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          DEUDA MÁS ANTIGUA SIN PAGAR
+        </div>
+        <div class="dash-deuda-fecha">${fmt(masViejo.fecha)}</div>
+        <div class="dash-deuda-sub">
+          Hace <b>${dias.toLocaleString('es-AR')} día${dias === 1 ? '' : 's'}</b>
+          · ${esc(masViejo.chofer)}${masViejo.numero ? ` · N° ${esc(masViejo.numero)}` : ''}
+        </div>
+      </div>
+    `;
+  } else {
+    html += `
+      <div class="dash-deuda-card dash-deuda-ok">
+        <div class="dash-deuda-head">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          CUENTA AL DÍA
+        </div>
+        <div class="dash-deuda-sub">No hay remitos pendientes de pago 🎉</div>
+      </div>
+    `;
+  }
+
+  // Una card por chofer.
+  if (!choferes.length) {
+    html += `<p class="empty-msg">No hay datos de choferes todavía</p>`;
+  } else {
+    html += choferes.map(c => {
+      const prom = c.promedioL100 != null ? c.promedioL100.toFixed(1) : '—';
+      const meses = c.meses.map(m => {
+        const pct = c.maxMesLitros > 0 ? Math.round((m.litros / c.maxMesLitros) * 100) : 0;
+        return `
+          <div class="dash-mes-row">
+            <span class="dash-mes-lbl">${fmtMes(m.mes)}</span>
+            <span class="dash-mes-bar"><span class="dash-mes-fill" style="width:${pct}%"></span></span>
+            <span class="dash-mes-val">${fmtLitros(m.litros)} L</span>
+          </div>
+        `;
+      }).join('');
+      return `
+        <div class="dash-chofer-card">
+          <div class="dash-chofer-head">
+            <span class="dash-chofer-nombre">${esc(c.nombre)}</span>
+            <span class="dash-chofer-prom">${prom}<small>L/100km prom.</small></span>
+          </div>
+          <div class="dash-chofer-stats">
+            <span>⛽ ${fmtLitros(c.totalLitros)} L totales</span>
+            <span>🛣 ${c.totalKm.toLocaleString('es-AR')} km</span>
+          </div>
+          <div class="dash-mes-title">Litros por mes</div>
+          <div class="dash-mes-list">${meses || '<span class="dash-mes-empty">Sin cargas registradas</span>'}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  main.innerHTML = html;
 }
 
 async function loadHistorial(main) {
@@ -1451,7 +1699,7 @@ function renderRemitoCard(r) {
   // Thumbnail de la foto del km (con badge)
   const kmThumb = r.foto_km_url
     ? `<div class="foto-thumb-wrap foto-km-thumb">
-         <img class="foto-thumb" src="${r.foto_km_url}" alt="km" data-urls="${allUrls}" data-idx="0">
+         <img class="foto-thumb" src="${r.foto_km_url}" alt="km" loading="lazy" decoding="async" data-urls="${allUrls}" data-idx="0">
          <span class="foto-km-badge">KM</span>
        </div>`
     : '';
@@ -1459,7 +1707,7 @@ function renderRemitoCard(r) {
   // Thumbnails de las fotos del remito (a partir del índice 1 si hay foto km)
   const offset  = r.foto_km_url ? 1 : 0;
   const thumbs  = fotos.slice(0, 4).map((f, i) =>
-    `<img class="foto-thumb" src="${f.storage_url}" alt="foto"
+    `<img class="foto-thumb" src="${f.storage_url}" alt="foto" loading="lazy" decoding="async"
       data-urls="${allUrls}" data-idx="${i + offset}">`
   ).join('');
   const masTag  = fotos.length > 4 ? `<div class="foto-mas">+${fotos.length - 4}</div>` : '';
@@ -1519,7 +1767,7 @@ function renderRemitoCard(r) {
     : '';
 
   return `
-    <div class="remito-card ${estado === 'pagado' ? 'card-pagado' : ''} ${r.archivado ? 'card-archivado' : ''} ${(r._inMerge || r.unir_anterior) ? 'card-unido' : ''}">
+    <div class="remito-card ${estado === 'pagado' ? 'card-pagado' : ''} ${r.archivado ? 'card-archivado' : ''} ${(r._inMerge || r.unir_anterior) ? 'card-unido' : ''}" data-num="${esc((r.numero || '').toLowerCase())}">
       <div class="remito-card-header">
         <div class="remito-meta">
           <span class="chofer-chip">${esc(nombre)}</span>
@@ -1618,7 +1866,7 @@ function marcarPagado(id) {
     const { error } = await sb.from('remitos').update(upd).eq('id', id);
     if (error) { toast('Error al actualizar', 'err'); return; }
     toast('Remito marcado como pagado ✓');
-    loadAdminContent();
+    if (r) { Object.assign(r, upd); loadAdminContent(true); } else { loadAdminContent(); }
   });
 }
 
@@ -1630,16 +1878,17 @@ async function completarPago(id) {
   const { error } = await sb.from('remitos').update(upd).eq('id', id);
   if (error) { toast('Error al actualizar', 'err'); return; }
   toast('Pago completado ✓');
-  loadAdminContent();
+  if (r) { Object.assign(r, upd); loadAdminContent(true); } else { loadAdminContent(); }
 }
 
 function marcarPendiente(id) {
   showConfirm('¿Marcar como pendiente?', 'Vuelve a pendiente y se borra el pago registrado.', 'Confirmar', async () => {
-    const { error } = await sb.from('remitos')
-      .update({ pagado: false, fecha_pago: null, litros_pagados: 0 }).eq('id', id);
+    const upd = { pagado: false, fecha_pago: null, litros_pagados: 0 };
+    const { error } = await sb.from('remitos').update(upd).eq('id', id);
     if (error) { toast('Error al actualizar', 'err'); return; }
     toast('Remito marcado como pendiente ✓');
-    loadAdminContent();
+    const r = _remitosCache[id];
+    if (r) { Object.assign(r, upd); loadAdminContent(true); } else { loadAdminContent(); }
   });
 }
 
@@ -1683,14 +1932,19 @@ function showPagoParcial(id) {
     if (error) { toast('Error al guardar', 'err'); return; }
     toast(fully ? 'Pago completado ✓' : `Pago parcial de ${fmtLitros(v)} L guardado ✓`);
     close();
-    loadAdminContent();
+    const rc = _remitosCache[id];
+    if (rc) { Object.assign(rc, upd); loadAdminContent(true); } else { loadAdminContent(); }
   });
   setTimeout(() => el.querySelector('#parcial-input').focus(), 100);
 }
 
 // Cache de remitos + lista de choferes (para el editor del admin)
+// _oilChangesCache: puntos de cambio de aceite; se reusa al re-render sin red.
 let _remitosCache = {};
 let _choferesList = [];
+let _oilChangesCache = [];
+// Buscador por N° de remito (filtra las cards en el lugar, sin re-render).
+let _buscarNumero = '';
 
 // Editor de remito (solo admin): permite corregir datos y agregar/quitar fotos
 function showEditRemito(id) {

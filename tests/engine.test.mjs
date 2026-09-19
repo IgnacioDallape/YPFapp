@@ -53,7 +53,7 @@ sandbox.supabase = {
 // ── Cargar app.js y exportar las funciones puras ──────────────────────
 const src = readFileSync(APP, 'utf8');
 const exportLine = `
-;globalThis.__T = { esc, fmtLitros, litrosTotal, litrosPagadosOf, litrosPendientes, estadoPago, computeViajes, computeOilStatus, computeMergeGroups, OIL_ALERT_KM };`;
+;globalThis.__T = { esc, fmtLitros, litrosTotal, litrosPagadosOf, litrosPendientes, estadoPago, computeViajes, computeOilStatus, computeMergeGroups, computeDashboard, OIL_ALERT_KM };`;
 vm.createContext(sandbox);
 vm.runInContext(src + exportLine, sandbox, { filename: 'app.js' });
 const T = sandbox.__T;
@@ -327,6 +327,78 @@ eq('agg: base tiene fecha del tope', mgAgg[0]._groupTopFecha, '2026-09-15');
 // El consumo real del tramo 31/08(km 1043401) → grupo: 1025 / (1046286-1043401=2885) * 100 = 35.5
 ok('agg: consumo combinado ≈ 35.5', +(1025 / (1046286 - 1043401) * 100).toFixed(1) === 35.5);
 eq('agg: el unido NO lleva agregados', mgAgg[1]._groupTopKm, null);
+
+// ── 11) computeDashboard ──────────────────────────────────────────────
+ok('dashboard: función', typeof T.computeDashboard === 'function');
+
+// Vacío
+const dEmpty = T.computeDashboard([]);
+eq('dashboard vacío: sin choferes', dEmpty.choferes, []);
+eq('dashboard vacío: sin deuda vieja', dEmpty.masViejo, null);
+eq('dashboard null: sin choferes', T.computeDashboard(null).choferes, []);
+
+// Un chofer, dos cargas en meses distintos + un viaje
+const dash1 = T.computeDashboard([
+  { chofer_id: 'a', fecha_carga: '2026-08-10', km: 1000, litros: 50, choferes: { nombre: 'Ana' } },
+  { chofer_id: 'a', fecha_carga: '2026-09-05', km: 1400, litros: 80, choferes: { nombre: 'Ana' } },
+]);
+ok('dash1: 1 chofer', dash1.choferes.length === 1);
+ok('dash1: nombre', dash1.choferes[0].nombre === 'Ana');
+ok('dash1: total litros 130', dash1.choferes[0].totalLitros === 130);
+ok('dash1: total km del viaje 400', dash1.choferes[0].totalKm === 400);
+ok('dash1: promedio 80/400*100=20', dash1.choferes[0].promedioL100 === 20);
+ok('dash1: 2 meses', dash1.choferes[0].meses.length === 2);
+ok('dash1: mes reciente primero (2026-09)', dash1.choferes[0].meses[0].mes === '2026-09');
+ok('dash1: litros sep=80', dash1.choferes[0].meses[0].litros === 80);
+ok('dash1: litros ago=50', dash1.choferes[0].meses[1].litros === 50);
+ok('dash1: maxMesLitros=80', dash1.choferes[0].maxMesLitros === 80);
+ok('dash1: sin deuda (todo sin pagar pero contamos pendientes)', dash1.masViejo !== null);
+
+// Una sola carga → sin viaje → promedio null
+const dashNoTrip = T.computeDashboard([
+  { chofer_id: 'a', fecha_carga: '2026-09-05', km: 1400, litros: 80, choferes: { nombre: 'Ana' } },
+]);
+eq('dashboard 1 carga: promedio null', dashNoTrip.choferes[0].promedioL100, null);
+
+// Litros del mismo mes se suman
+const dashSameMonth = T.computeDashboard([
+  { chofer_id: 'a', fecha_carga: '2026-09-02', km: 1000, litros: 30, choferes: { nombre: 'Ana' } },
+  { chofer_id: 'a', fecha_carga: '2026-09-20', km: 1500, litros: 40, choferes: { nombre: 'Ana' } },
+]);
+ok('dashboard mismo mes: 1 mes', dashSameMonth.choferes[0].meses.length === 1);
+ok('dashboard mismo mes: litros 70', dashSameMonth.choferes[0].meses[0].litros === 70);
+
+// masViejo: elige el pendiente más antiguo; ignora pagados y efectivo.
+// Input DESORDENADO a propósito (el más viejo va último) para exigir la comparación real.
+const dashDeuda = T.computeDashboard([
+  { chofer_id: 'a', fecha_carga: '2026-08-01', km: 400, litros: 50, choferes: { nombre: 'Ana' } },                    // pendiente más nuevo (primero en la lista)
+  { chofer_id: 'a', fecha_carga: '2026-05-01', km: 100, litros: 50, pagado: true, choferes: { nombre: 'Ana' } },      // pagado → no cuenta (aunque sea el más viejo)
+  { chofer_id: 'b', fecha_carga: '2026-06-01', km: 200, litros: 50, efectivo: true, choferes: { nombre: 'Beto' } },   // efectivo → no cuenta
+  { chofer_id: 'b', fecha_carga: '2026-07-01', km: 300, litros: 50, numero: 'R-7', choferes: { nombre: 'Beto' } },    // pendiente más viejo (último en la lista)
+]);
+ok('dashboard deuda: elige el pendiente más viejo (2026-07-01)', dashDeuda.masViejo.fecha === '2026-07-01');
+ok('dashboard deuda: número correcto', dashDeuda.masViejo.numero === 'R-7');
+ok('dashboard deuda: chofer correcto (Beto)', dashDeuda.masViejo.chofer === 'Beto');
+
+// Sin pendientes (todo pagado/efectivo) → masViejo null
+const dashSinDeuda = T.computeDashboard([
+  { chofer_id: 'a', fecha_carga: '2026-05-01', km: 100, litros: 50, pagado: true, choferes: { nombre: 'Ana' } },
+  { chofer_id: 'a', fecha_carga: '2026-06-01', km: 200, litros: 50, efectivo: true, choferes: { nombre: 'Ana' } },
+]);
+eq('dashboard sin pendientes: masViejo null', dashSinDeuda.masViejo, null);
+
+// Parcial cuenta como pendiente
+const dashParcial = T.computeDashboard([
+  { chofer_id: 'a', fecha_carga: '2026-07-01', km: 300, litros: 50, litros_pagados: 20, choferes: { nombre: 'Ana' } },
+]);
+ok('dashboard parcial: cuenta como pendiente', dashParcial.masViejo && dashParcial.masViejo.fecha === '2026-07-01');
+
+// Dos choferes ordenados por nombre
+const dashDos = T.computeDashboard([
+  { chofer_id: 'b', fecha_carga: '2026-09-01', km: 100, litros: 20, choferes: { nombre: 'Zoe' } },
+  { chofer_id: 'a', fecha_carga: '2026-09-01', km: 100, litros: 20, choferes: { nombre: 'Ana' } },
+]);
+ok('dashboard 2 choferes: orden alfabético (Ana antes de Zoe)', dashDos.choferes[0].nombre === 'Ana' && dashDos.choferes[1].nombre === 'Zoe');
 
 // ── Resumen ───────────────────────────────────────────────────────────
 console.log(`\nRemitosApp · tests del motor`);

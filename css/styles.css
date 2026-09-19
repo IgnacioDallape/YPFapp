@@ -117,14 +117,14 @@ body {
   display: flex;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 0 16px;
+  padding: 0 10px;
 }
 .tab-btn {
-  flex: 1; padding: 14px 8px;
+  flex: 1; padding: 14px 4px;
   background: none; border: none; border-bottom: 2px solid transparent;
-  color: var(--text-mid); font-size: 0.92rem; font-weight: 600;
+  color: var(--text-mid); font-size: 0.84rem; font-weight: 600;
   cursor: pointer; transition: color 0.15s, border-color 0.15s;
-  font-family: var(--font); margin-bottom: -1px;
+  font-family: var(--font); margin-bottom: -1px; white-space: nowrap;
 }
 .tab-btn:hover { color: var(--text); }
 .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }
@@ -385,6 +385,45 @@ input[type="date"].inp, input[type="month"].inp { cursor: pointer; }
 .filtros-title svg { color: var(--blue); }
 .filtros-clear { background: none; border: none; font-family: var(--font); font-size: 0.74rem; font-weight: 700; color: var(--blue); cursor: pointer; padding: 2px 8px; border-radius: var(--radius-sm); transition: background 0.15s; }
 .filtros-clear:hover { background: var(--blue-50); }
+
+/* Buscador por N° de remito (arriba de la lista en Pendientes y Todos) */
+.buscador-remito { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0 10px; box-shadow: var(--shadow-sm); transition: border-color 0.15s, box-shadow 0.15s; }
+.buscador-remito:focus-within { border-color: var(--blue); box-shadow: var(--ring); }
+.buscador-icon { color: var(--text-subtle); flex-shrink: 0; transition: color 0.15s; }
+.buscador-remito:focus-within .buscador-icon { color: var(--blue); }
+.buscador-input { flex: 1; min-width: 0; border: none; outline: none; background: none; font-family: var(--font); font-size: 0.92rem; color: var(--text); padding: 11px 0; }
+.buscador-input::placeholder { color: var(--text-subtle); }
+.buscador-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.buscador-clear { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-mid); border-radius: 999px; font-family: var(--font); font-size: 0.8rem; line-height: 1; cursor: pointer; transition: all 0.15s; }
+.buscador-clear:hover { background: var(--border); color: var(--text); }
+.buscador-clear[hidden] { display: none; }
+.buscador-empty { text-align: center; color: var(--text-mid); font-size: 0.88rem; padding: 12px; background: var(--surface-2); border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+.buscador-empty[hidden] { display: none; }
+
+/* Dashboard */
+.dash-deuda-card { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--amber, #b35a00); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow-md); }
+.dash-deuda-ok { border-left-color: var(--green, #1a7a4a); }
+.dash-deuda-head { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mid); }
+.dash-deuda-head svg { color: var(--amber, #b35a00); }
+.dash-deuda-ok .dash-deuda-head svg { color: var(--green, #1a7a4a); }
+.dash-deuda-fecha { font-size: 1.7rem; font-weight: 800; color: var(--text); letter-spacing: -0.02em; margin-top: 4px; }
+.dash-deuda-sub { font-size: 0.86rem; color: var(--text-mid); margin-top: 2px; }
+.dash-deuda-sub b { color: var(--text); }
+
+.dash-chofer-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+.dash-chofer-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.dash-chofer-nombre { font-size: 1.05rem; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.dash-chofer-prom { font-size: 1.35rem; font-weight: 800; color: var(--blue); white-space: nowrap; }
+.dash-chofer-prom small { font-size: 0.62rem; font-weight: 700; color: var(--text-subtle); text-transform: uppercase; letter-spacing: 0.06em; margin-left: 4px; }
+.dash-chofer-stats { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 0.83rem; color: var(--text-mid); }
+.dash-mes-title { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-subtle); margin: 14px 0 8px; }
+.dash-mes-list { display: flex; flex-direction: column; gap: 7px; }
+.dash-mes-row { display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 10px; }
+.dash-mes-lbl { font-size: 0.8rem; color: var(--text-mid); text-transform: capitalize; }
+.dash-mes-bar { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.dash-mes-fill { display: block; height: 100%; background: var(--blue); border-radius: 999px; min-width: 3px; }
+.dash-mes-val { font-size: 0.82rem; font-weight: 700; color: var(--text); white-space: nowrap; }
+.dash-mes-empty { font-size: 0.83rem; color: var(--text-subtle); }
 
 .filtros-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .filtro-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

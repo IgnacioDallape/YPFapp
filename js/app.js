@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v44 · 2026-09-19';
+const APP_VERSION = 'v45 · 2026-09-19';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -28,7 +28,7 @@ const S = {
   choferId:  localStorage.getItem('ypf_chofer_id'),
   nombre:    localStorage.getItem('ypf_nombre'),
   isAdmin:   localStorage.getItem('ypf_is_admin') === 'true',
-  adminTab:  'pendientes',
+  adminTab:  'dashboard',
   filtroChofer: '',
   filtroMes:    '',
   fotosStaged:  [],
@@ -909,33 +909,94 @@ function showConfirm(titulo, subtitulo, btnLabel, onConfirm) {
 // =====================================================
 // ADMIN
 // =====================================================
+// Íconos del sidebar / topbar (SVG inline, trazo fino tipo lucide).
+const ICON = {
+  home:   `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>`,
+  doc:    `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>`,
+  layers: `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`,
+  clock:  `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
+  users:  `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  gear:   `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  logout: `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>`,
+  menu:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
+  cal:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+};
+
+const ADMIN_NAV = [
+  { tab: 'dashboard',    label: 'Dashboard',    icon: 'home'  },
+  { tab: 'pendientes',   label: 'Pendientes',   icon: 'doc', badge: true },
+  { tab: 'todos',        label: 'Todos',        icon: 'layers' },
+  { tab: 'historial',    label: 'Historial',    icon: 'clock' },
+  { tab: 'conductores',  label: 'Conductores',  icon: 'users' },
+  { tab: 'configuracion',label: 'Configuración',icon: 'gear'  },
+];
+
+function closeSidebar()  { document.getElementById('admin-shell')?.classList.remove('sidebar-open'); }
+function toggleSidebar()  { document.getElementById('admin-shell')?.classList.toggle('sidebar-open'); }
+
+// Resalta el ítem activo del sidebar según S.adminTab.
+function syncNav() {
+  document.querySelectorAll('.nav-item[data-tab]').forEach(el =>
+    el.classList.toggle('is-active', el.dataset.tab === S.adminTab));
+}
+
+// Badge de "Pendientes" en el sidebar (cantidad de remitos con deuda).
+function updatePendBadge(n) {
+  const b = document.getElementById('nav-pend-badge');
+  if (!b) return;
+  if (n > 0) { b.textContent = n; b.hidden = false; }
+  else       { b.textContent = ''; b.hidden = true; }
+}
+
+// Cambiar de sección (nav o botones internos como "Ver pendientes").
+function adminGoTab(tab) {
+  S.adminTab     = tab;
+  S.filtroChofer = '';
+  S.filtroMes    = '';
+  _buscarNumero  = '';   // el buscador es por sección
+  syncNav();
+  closeSidebar();
+  loadAdminContent();
+}
+
+// Capitaliza la primera letra (para la fecha larga del topbar).
+const capFirst = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+
 async function renderAdmin() {
+  const fechaLarga = capFirst(new Date().toLocaleDateString('es-AR',
+    { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
+
+  const navHtml = ADMIN_NAV.map(n => `
+    <button class="nav-item ${S.adminTab === n.tab ? 'is-active' : ''}" data-tab="${n.tab}">
+      ${ICON[n.icon]}<span class="nav-label">${n.label}</span>
+      ${n.badge ? `<span class="nav-badge" id="nav-pend-badge" hidden></span>` : ''}
+    </button>`).join('');
+
   app().innerHTML = `
-    <div class="screen screen-admin">
-      <header class="app-header">
-        <span class="header-name">Panel Admin <span class="version-inline">${APP_VERSION}</span></span>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span class="admin-badge">ADMIN</span>
-          <button id="btn-logout-admin" class="btn-logout" title="Cerrar sesión">↩ Salir</button>
+    <div class="screen screen-admin admin-shell" id="admin-shell">
+      <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-logo">🚚</div>
+          <div class="brand-text">
+            <div class="brand-name">RemitosApp</div>
+            <div class="brand-sub">Panel Admin</div>
+            <div class="brand-ver">${APP_VERSION}</div>
+          </div>
         </div>
-      </header>
-      <div class="tab-bar">
-        <button class="tab-btn ${S.adminTab === 'pendientes' ? 'active' : ''}" data-tab="pendientes">
-          Pendientes
-        </button>
-        <button class="tab-btn ${S.adminTab === 'todos' ? 'active' : ''}" data-tab="todos">
-          Todos
-        </button>
-        <button class="tab-btn ${S.adminTab === 'historial' ? 'active' : ''}" data-tab="historial">
-          Historial
-        </button>
-        <button class="tab-btn ${S.adminTab === 'dashboard' ? 'active' : ''}" data-tab="dashboard">
-          Dashboard
-        </button>
+        <nav class="sidebar-nav">${navHtml}</nav>
+        <button class="nav-item nav-logout" id="btn-logout-admin">${ICON.logout}<span class="nav-label">Salir</span></button>
+      </aside>
+      <div class="admin-body">
+        <header class="topbar">
+          <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Menú">${ICON.menu}</button>
+          <div class="topbar-date">${ICON.cal}<span>${fechaLarga}</span></div>
+          <div class="topbar-user"><span class="topbar-avatar">AD</span><span class="topbar-user-name">ADMIN</span></div>
+        </header>
+        <main class="admin-main" id="admin-main">
+          <div class="loading-inline">Cargando...</div>
+        </main>
       </div>
-      <main class="admin-main" id="admin-main">
-        <div class="loading-inline">Cargando...</div>
-      </main>
     </div>
     <div id="lightbox" class="lightbox hidden">
       <div class="lb-backdrop" id="lb-backdrop"></div>
@@ -948,19 +1009,15 @@ async function renderAdmin() {
 
   $('btn-logout-admin').addEventListener('click', logout);
 
-  document.querySelectorAll('.tab-btn').forEach(b => {
+  document.querySelectorAll('.nav-item[data-tab]').forEach(b => {
     b.addEventListener('click', () => {
-      if (b.dataset.tab === S.adminTab) return;
-      S.adminTab     = b.dataset.tab;
-      S.filtroChofer = '';
-      S.filtroMes    = '';
-      _buscarNumero  = '';   // el buscador es por pestaña
-      document.querySelectorAll('.tab-btn').forEach(x =>
-        x.classList.toggle('active', x.dataset.tab === S.adminTab)
-      );
-      loadAdminContent();
+      if (b.dataset.tab === S.adminTab) { closeSidebar(); return; }
+      adminGoTab(b.dataset.tab);
     });
   });
+
+  $('sidebar-toggle')?.addEventListener('click', toggleSidebar);
+  $('sidebar-backdrop')?.addEventListener('click', closeSidebar);
 
   bindLightbox();
   await Promise.all([loadPrecioLitro(), loadPagoTemporario()]);
@@ -997,10 +1054,13 @@ async function savePagoTemporario(v) {
 async function loadAdminContent(useCache = false) {
   const main = $('admin-main');
   if (!main) return;
+  syncNav();   // resalta el ítem activo del sidebar
 
-  // El Historial y el Dashboard tienen su propio flujo (calculan sobre todo el histórico).
-  if (S.adminTab === 'historial') return loadHistorial(main);
-  if (S.adminTab === 'dashboard') return loadDashboard(main);
+  // Secciones con flujo propio (calculan sobre todo el histórico o sobre otras tablas).
+  if (S.adminTab === 'historial')    return loadHistorial(main);
+  if (S.adminTab === 'dashboard')    return loadDashboard(main);
+  if (S.adminTab === 'conductores')  return loadConductores(main);
+  if (S.adminTab === 'configuracion')return loadConfiguracion(main);
 
   let all, choferes, oilChanges;
 
@@ -1056,6 +1116,12 @@ async function loadAdminContent(useCache = false) {
   const archivados = S.adminTab === 'todos' ? all.filter(r =>  r.archivado) : [];
   computeOilStatus(all, oilChanges);
   computeMergeGroups(all);   // marca los remitos que forman una unión (para pintarlos)
+
+  // Badge de "Pendientes" en el sidebar (remitos con deuda, no archivados).
+  // Solo con el set completo: si hay un filtro activo (chofer/mes en "Todos")
+  // el conteo sería parcial, así que en ese caso se mantiene el último valor real.
+  if (!S.filtroChofer && !S.filtroMes)
+    updatePendBadge(all.filter(r => !r.archivado && litrosPendientes(r) > 0).length);
 
   let html = '';
 
@@ -1478,6 +1544,7 @@ function computeDashboard(remitos) {
       nombre: g.nombre || 'Desconocido',
       totalLitros: g.totalLitros,
       totalKm,
+      totalLitrosViaje,
       promedioL100,
       meses,
       maxMesLitros,
@@ -1486,8 +1553,10 @@ function computeDashboard(remitos) {
 
   // Remito más viejo NO pagado (con litros pendientes en cuenta corriente).
   let masViejo = null;
+  let pendientesCount = 0;
   for (const r of list) {
     if (litrosPendientes(r) <= 0) continue;   // pagado/efectivo/sin pendiente → no cuenta
+    if (!r.archivado) pendientesCount++;       // badge de "Pendientes"
     if (!r.fecha_carga) continue;
     if (!masViejo || r.fecha_carga < masViejo.fecha) {
       masViejo = {
@@ -1499,7 +1568,26 @@ function computeDashboard(remitos) {
     }
   }
 
-  return { choferes, masViejo };
+  // Totales de la flota (para las tarjetas de resumen del Dashboard).
+  const fleetTotalLitros = choferes.reduce((a, c) => a + c.totalLitros, 0);
+  const fleetTotalKm     = choferes.reduce((a, c) => a + c.totalKm, 0);
+  const fleetViajeLitros = choferes.reduce((a, c) => a + c.totalLitrosViaje, 0);
+  const fleet = {
+    totalLitros: fleetTotalLitros,
+    totalKm: fleetTotalKm,
+    promedioL100: fleetTotalKm > 0 ? (fleetViajeLitros / fleetTotalKm) * 100 : null,
+  };
+
+  // Rango de meses con datos (para el chip "May 2026 – Sep 2026").
+  let monthRange = null;
+  for (const r of list) {
+    const mes = (r.fecha_carga || '').slice(0, 7);
+    if (!mes) continue;
+    if (!monthRange) monthRange = { from: mes, to: mes };
+    else { if (mes < monthRange.from) monthRange.from = mes; if (mes > monthRange.to) monthRange.to = mes; }
+  }
+
+  return { choferes, masViejo, pendientesCount, fleet, monthRange };
 }
 
 // Días transcurridos entre una fecha 'YYYY-MM-DD' y hoy (>= 0).
@@ -1517,54 +1605,111 @@ function fmtMes(mes) {
   return d.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
 }
 
+// Saludo según la hora local.
+function saludo() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Buen día';
+  if (h < 20) return 'Buenas tardes';
+  return 'Buenas noches';
+}
+
 async function loadDashboard(main) {
   main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
   const { data: remitos, error } = await sb
     .from('remitos')
-    .select('chofer_id, fecha_carga, km, litros, unir_anterior, efectivo, pagado, litros_pagados, numero, choferes(nombre)');
+    .select('chofer_id, fecha_carga, km, litros, unir_anterior, efectivo, pagado, litros_pagados, numero, archivado, choferes(nombre)');
 
   if (error) {
     main.innerHTML = `<p class="empty-msg">Error al cargar el dashboard. Verificá tu conexión.</p>`;
     return;
   }
 
-  const { choferes, masViejo } = computeDashboard(remitos || []);
+  const { choferes, masViejo, pendientesCount, fleet, monthRange } = computeDashboard(remitos || []);
+  updatePendBadge(pendientesCount);
+  const fmtARS = n => '$ ' + Math.round(n).toLocaleString('es-AR');
   let html = '';
+
+  // Encabezado de bienvenida.
+  html += `
+    <div class="dash-greet">
+      <h1 class="dash-greet-title">¡${saludo()}, Admin!</h1>
+      <p class="dash-greet-sub">Resumen de tu flota</p>
+    </div>
+  `;
 
   // Antigüedad de la cuenta sin pagar (remito pendiente más viejo).
   if (masViejo) {
     const dias = diasDesde(masViejo.fecha);
     html += `
       <div class="dash-deuda-card">
-        <div class="dash-deuda-head">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-          DEUDA MÁS ANTIGUA SIN PAGAR
+        <div class="dash-deuda-ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
         </div>
-        <div class="dash-deuda-fecha">${fmt(masViejo.fecha)}</div>
-        <div class="dash-deuda-sub">
-          Hace <b>${dias.toLocaleString('es-AR')} día${dias === 1 ? '' : 's'}</b>
-          · ${esc(masViejo.chofer)}${masViejo.numero ? ` · N° ${esc(masViejo.numero)}` : ''}
+        <div class="dash-deuda-body">
+          <div class="dash-deuda-head">Deuda más antigua sin pagar</div>
+          <div class="dash-deuda-line">
+            <span class="dash-deuda-fecha">${fmt(masViejo.fecha)}</span>
+            <span class="dash-deuda-meta">Hace <b>${dias.toLocaleString('es-AR')} día${dias === 1 ? '' : 's'}</b> · ${esc(masViejo.chofer)}${masViejo.numero ? ` · N° ${esc(masViejo.numero)}` : ''}</span>
+          </div>
         </div>
+        <button class="btn-ver-pendientes" data-goto="pendientes">Ver pendientes →</button>
       </div>
     `;
   } else {
     html += `
       <div class="dash-deuda-card dash-deuda-ok">
-        <div class="dash-deuda-head">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-          CUENTA AL DÍA
+        <div class="dash-deuda-ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
         </div>
-        <div class="dash-deuda-sub">No hay remitos pendientes de pago 🎉</div>
+        <div class="dash-deuda-body">
+          <div class="dash-deuda-head">Cuenta al día</div>
+          <div class="dash-deuda-line"><span class="dash-deuda-meta">No hay remitos pendientes de pago 🎉</span></div>
+        </div>
       </div>
     `;
   }
 
-  // Una card por chofer.
+  // Tarjetas de resumen (flota).
+  const prom = fleet.promedioL100 != null ? fleet.promedioL100.toFixed(1) : '—';
+  html += `
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <div class="stat-ico stat-ico-blue">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M3 22h14"/><path d="M4 13h12"/><path d="M16 8h1a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg>
+        </div>
+        <div class="stat-body"><div class="stat-lbl">Total cargado</div><div class="stat-val">${fmtLitros(fleet.totalLitros)} <span class="stat-unit">L</span></div></div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-ico stat-ico-green">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21L8 3"/><path d="M21 21L16 3"/><path d="M12 5v2"/><path d="M12 11v2"/><path d="M12 17v2"/></svg>
+        </div>
+        <div class="stat-body"><div class="stat-lbl">Total recorrido</div><div class="stat-val">${fleet.totalKm.toLocaleString('es-AR')} <span class="stat-unit">km</span></div></div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-ico stat-ico-violet">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+        <div class="stat-body"><div class="stat-lbl">Consumo promedio</div><div class="stat-val">${prom} <span class="stat-unit">L/100 km</span></div></div>
+      </div>
+    </div>
+  `;
+
+  // Consumo por chofer.
+  const rangoChip = monthRange
+    ? `<span class="dash-range-chip">📅 ${fmtMes(monthRange.from)} – ${fmtMes(monthRange.to)}</span>`
+    : '';
+  html += `
+    <div class="dash-section-head">
+      <h2 class="dash-section-title">Consumo por chofer</h2>
+      ${rangoChip}
+    </div>
+  `;
+
   if (!choferes.length) {
     html += `<p class="empty-msg">No hay datos de choferes todavía</p>`;
   } else {
-    html += choferes.map(c => {
-      const prom = c.promedioL100 != null ? c.promedioL100.toFixed(1) : '—';
+    html += `<div class="dash-chofer-grid">` + choferes.map(c => {
+      const cprom = c.promedioL100 != null ? c.promedioL100.toFixed(1) : '—';
       const meses = c.meses.map(m => {
         const pct = c.maxMesLitros > 0 ? Math.round((m.litros / c.maxMesLitros) * 100) : 0;
         return `
@@ -1579,20 +1724,119 @@ async function loadDashboard(main) {
         <div class="dash-chofer-card">
           <div class="dash-chofer-head">
             <span class="dash-chofer-nombre">${esc(c.nombre)}</span>
-            <span class="dash-chofer-prom">${prom}<small>L/100km prom.</small></span>
+            <span class="dash-chofer-prom">${cprom}<small>L/100 km</small></span>
           </div>
           <div class="dash-chofer-stats">
-            <span>⛽ ${fmtLitros(c.totalLitros)} L totales</span>
+            <span>⛽ ${fmtLitros(c.totalLitros)} L</span>
             <span>🛣 ${c.totalKm.toLocaleString('es-AR')} km</span>
           </div>
           <div class="dash-mes-title">Litros por mes</div>
           <div class="dash-mes-list">${meses || '<span class="dash-mes-empty">Sin cargas registradas</span>'}</div>
         </div>
       `;
-    }).join('');
+    }).join('') + `</div>`;
   }
 
   main.innerHTML = html;
+  main.querySelector('[data-goto="pendientes"]')?.addEventListener('click', () => adminGoTab('pendientes'));
+}
+
+// =====================================================
+// CONDUCTORES — alta / baja de choferes (sección propia)
+// =====================================================
+async function loadConductores(main) {
+  main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
+  const { data, error } = await sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre');
+  const choferes = data || [];
+  const rows = choferes.length
+    ? choferes.map(c => `
+        <div class="cond-row">
+          <span class="cond-avatar">${esc((c.nombre || '?').trim().charAt(0).toUpperCase())}</span>
+          <span class="cond-nombre">${esc(c.nombre)}</span>
+          <button class="cond-del" data-id="${c.id}" data-nombre="${esc(c.nombre)}" title="Eliminar chofer">🗑</button>
+        </div>`).join('')
+    : `<div class="cond-empty">No hay choferes cargados</div>`;
+
+  main.innerHTML = `
+    <div class="section-head">
+      <h1 class="section-title">Conductores</h1>
+      <p class="section-sub">Crear o eliminar choferes. La contraseña es un PIN de 4 dígitos.</p>
+    </div>
+    <div class="panel">
+      <div class="form-row-2">
+        <div class="field"><label class="field-label">Nombre</label><input id="u-nombre" class="inp" placeholder="Ej: Hugo" maxlength="60" autocomplete="off"></div>
+        <div class="field"><label class="field-label">PIN (4 díg.)</label><input id="u-pin" class="inp" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off"></div>
+      </div>
+      <button id="u-add" class="btn btn-primary btn-full mt-sm">➕ Agregar chofer</button>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Choferes (${choferes.length})</div>
+      <div class="cond-list">${rows}</div>
+    </div>
+  `;
+  if (error) toast('No se pudieron cargar los choferes', 'err');
+
+  const pinInput = main.querySelector('#u-pin');
+  pinInput.addEventListener('input', () => { pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 4); });
+  const addBtn = main.querySelector('#u-add');
+  addBtn.addEventListener('click', async () => {
+    const nombre = main.querySelector('#u-nombre').value.trim();
+    const pin = pinInput.value;
+    if (nombre.length < 2) { toast('Ingresá un nombre', 'err'); return; }
+    if (pin.length !== 4)  { toast('El PIN debe tener 4 dígitos', 'err'); return; }
+    addBtn.disabled = true;   // evita doble alta por doble click
+    await addChofer(nombre, pin, () => loadConductores(main));
+    addBtn.disabled = false;
+  });
+  main.querySelectorAll('.cond-del').forEach(b =>
+    b.addEventListener('click', () => eliminarChofer(b.dataset.id, b.dataset.nombre, () => loadConductores(main))));
+}
+
+// =====================================================
+// CONFIGURACIÓN — precio del litro + pago sin asignar (sección propia)
+// =====================================================
+async function loadConfiguracion(main) {
+  const fmtARS = n => '$ ' + Math.round(n).toLocaleString('es-AR');
+  const temp = Math.max(0, S.pagoTemporario || 0);
+  main.innerHTML = `
+    <div class="section-head">
+      <h1 class="section-title">Configuración</h1>
+      <p class="section-sub">Precio del combustible y pagos sin asignar.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Precio por litro</div>
+      <p class="panel-note">Se usa para calcular la deuda de combustible.</p>
+      <div class="form-row-2 form-row-inline">
+        <div class="field"><label class="field-label">Pesos por litro</label><input id="cfg-precio" class="inp" type="number" step="0.01" min="0" value="${S.precioLitro || ''}" placeholder="Ej: 1450.50" autocomplete="off"></div>
+        <button id="cfg-precio-save" class="btn btn-primary">Guardar</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Pago sin asignar</div>
+      <p class="panel-note">Se <b>resta del saldo</b> pero NO marca ningún remito. Los remitos nuevos se siguen sumando. Cuando tengas las facturas, tocá "Ya tengo las facturas" y marcá los remitos como pagados.</p>
+      <div class="form-row-2 form-row-inline">
+        <div class="field"><label class="field-label">Total pagado (pesos)</label><input id="cfg-temp" class="inp" type="number" step="1000" min="0" inputmode="numeric" value="${temp || ''}" placeholder="Ej: 8000000" autocomplete="off"></div>
+        <button id="cfg-temp-save" class="btn btn-primary">Guardar</button>
+      </div>
+      ${temp > 0 ? `<div class="cfg-temp-actual"><span>Actual sin asignar: <b>${fmtARS(temp)}</b></span><button id="cfg-temp-clear" class="btn btn-ghost btn-sm">✓ Ya tengo las facturas</button></div>` : ''}
+    </div>
+    <div class="panel panel-muted">
+      <div class="panel-title">Acerca de</div>
+      <p class="panel-note">RemitosApp · ${APP_VERSION}</p>
+    </div>
+  `;
+  main.querySelector('#cfg-precio-save').addEventListener('click', async () => {
+    await savePrecioLitro(main.querySelector('#cfg-precio').value);
+    toast('Precio actualizado ✓');
+  });
+  main.querySelector('#cfg-temp-save').addEventListener('click', async () => {
+    let v = parseFloat(main.querySelector('#cfg-temp').value);
+    if (isNaN(v) || v < 0) v = 0;
+    await savePagoTemporario(v);
+    toast(v > 0 ? `Pago sin asignar: ${fmtARS(v)} ✓` : 'Pago sin asignar en $0');
+    loadConfiguracion(main);
+  });
+  main.querySelector('#cfg-temp-clear')?.addEventListener('click', limpiarPagoTemporario);
 }
 
 async function loadHistorial(main) {

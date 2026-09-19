@@ -400,6 +400,27 @@ const dashDos = T.computeDashboard([
 ]);
 ok('dashboard 2 choferes: orden alfabético (Ana antes de Zoe)', dashDos.choferes[0].nombre === 'Ana' && dashDos.choferes[1].nombre === 'Zoe');
 
+// Totales de flota + pendientesCount + rango de meses
+const dashFleet = T.computeDashboard([
+  { chofer_id: 'a', fecha_carga: '2026-07-02', km: 1000, litros: 100, choferes: { nombre: 'Ana' } },  // viaje base
+  { chofer_id: 'a', fecha_carga: '2026-08-04', km: 1400, litros: 80,  choferes: { nombre: 'Ana' } },  // viaje: 80/400*100=20
+  { chofer_id: 'b', fecha_carga: '2026-09-06', km: 5000, litros: 50, pagado: true, choferes: { nombre: 'Beto' } }, // pagado
+  { chofer_id: 'b', fecha_carga: '2026-09-10', km: 5300, litros: 30, choferes: { nombre: 'Beto' } }, // pendiente, viaje 30/300*100=10
+]);
+ok('fleet: total litros = 100+80+50+30 = 260', dashFleet.fleet.totalLitros === 260);
+ok('fleet: total km = 400 (Ana) + 300 (Beto) = 700', dashFleet.fleet.totalKm === 700);
+ok('fleet: promedio = (80+30)/700*100 ≈ 15.71', Math.abs(dashFleet.fleet.promedioL100 - (110 / 700 * 100)) < 1e-9);
+ok('fleet: pendientesCount = 3 (Ana 07 y 08, Beto 10; NO el pagado)', dashFleet.pendientesCount === 3);
+ok('fleet: rango meses from 2026-07', dashFleet.monthRange.from === '2026-07');
+ok('fleet: rango meses to 2026-09', dashFleet.monthRange.to === '2026-09');
+
+// Sin datos → fleet en cero y sin rango
+const dashFleet0 = T.computeDashboard([]);
+ok('fleet vacío: totalLitros 0', dashFleet0.fleet.totalLitros === 0);
+ok('fleet vacío: promedio null', dashFleet0.fleet.promedioL100 === null);
+ok('fleet vacío: pendientesCount 0', dashFleet0.pendientesCount === 0);
+eq('fleet vacío: monthRange null', dashFleet0.monthRange, null);
+
 // ── Resumen ───────────────────────────────────────────────────────────
 console.log(`\nRemitosApp · tests del motor`);
 console.log(`  ${passed} passed, ${failed} failed  (${passed + failed} total)\n`);

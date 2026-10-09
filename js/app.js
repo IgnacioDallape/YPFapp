@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v45 · 2026-09-19';
+const APP_VERSION = 'v46 · 2026-10-09';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -2279,6 +2279,11 @@ function showEditRemito(id) {
           <span>🔗 Unir con la carga anterior — tanque no lleno (combina el consumo)</span>
         </label>
 
+        <label class="edit-check">
+          <input type="checkbox" id="e-aceite" ${r.cambio_aceite ? 'checked' : ''}>
+          <span>🛢 Cambié el aceite en esta carga — reinicia el contador de km hasta el próximo cambio (aviso a los ${OIL_ALERT_KM.toLocaleString('es-AR')} km)</span>
+        </label>
+
         <div class="field">
           <label class="field-label">Foto del kilómetro</label>
           <div id="e-km-preview" class="foto-previews"></div>
@@ -2401,6 +2406,7 @@ function showEditRemito(id) {
         comentarios:    el.querySelector('#e-comentarios').value.trim() || null,
         efectivo:       el.querySelector('#e-efectivo').checked,
         unir_anterior:  el.querySelector('#e-unir').checked,
+        cambio_aceite:  el.querySelector('#e-aceite').checked,
         litros_pagados: lpVal,
         pagado:         fully,
         fecha_pago:     fully ? (r.fecha_pago || today()) : null,

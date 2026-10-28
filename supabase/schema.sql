@@ -11,12 +11,15 @@
 -- ── Tablas ───────────────────────────────────────────────────────────
 
 create table if not exists choferes (
-  id         uuid primary key default gen_random_uuid(),
-  nombre     text not null,
-  pin        text,                       -- PIN de 4 dígitos (login: nombre + pin)
-  device_id  text unique not null,
-  is_admin   boolean default false,
-  created_at timestamptz default now()
+  id                uuid primary key default gen_random_uuid(),
+  nombre            text not null,
+  pin               text,                 -- PIN de 4 dígitos (login: nombre + pin)
+  device_id         text unique not null,
+  is_admin          boolean default false,
+  aceite_base       numeric,              -- km desde el último cambio de aceite (seteado a mano por chofer)
+  aceite_base_km    numeric,              -- odómetro de la carga a la que se ancló
+  aceite_base_fecha date,                 -- fecha de esa carga (se aplica de acá en adelante)
+  created_at        timestamptz default now()
 );
 
 create table if not exists remitos (
@@ -55,6 +58,9 @@ create table if not exists config (
 
 -- ── Columnas agregadas en migraciones (idempotente para bases viejas) ─
 alter table choferes add column if not exists pin            text;
+alter table choferes add column if not exists aceite_base       numeric;
+alter table choferes add column if not exists aceite_base_km    numeric;
+alter table choferes add column if not exists aceite_base_fecha date;
 alter table remitos  add column if not exists numero         text;
 alter table remitos  add column if not exists km             integer;
 alter table remitos  add column if not exists foto_km_url    text;

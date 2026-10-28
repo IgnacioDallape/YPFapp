@@ -248,6 +248,29 @@ const oilR3 = [{ id: 1, chofer_id: 'a', km: null }];
 T.computeOilStatus(oilR3, [{ chofer_id: 'a', km: 1000 }]);
 eq('aceite: km null → null', oilR3[0]._oilKmDesde, null);
 
+// Base de aceite MANUAL por chofer (cambio de camión): se ancla a la última
+// carga y suma de ahí en adelante; no toca el historial viejo.
+const baseMap = { a: { aceite_base: 12197, aceite_base_km: 22519, aceite_base_fecha: '2026-10-26' } };
+const oilBase = [
+  { id: 1, chofer_id: 'a', km: 22519, fecha_carga: '2026-10-26' },  // carga ancla → 12197
+  { id: 2, chofer_id: 'a', km: 25000, fecha_carga: '2026-10-28' },  // +2481 → 14678
+  { id: 3, chofer_id: 'a', km: 500000, fecha_carga: '2026-09-01' }, // anterior a la base → null
+];
+T.computeOilStatus(oilBase, [], baseMap);
+eq('aceite base: carga ancla = valor seteado', oilBase[0]._oilKmDesde, 12197);
+eq('aceite base: suma los km nuevos', oilBase[1]._oilKmDesde, 14678);
+eq('aceite base: no toca el historial viejo', oilBase[2]._oilKmDesde, null);
+
+// Un cambio de aceite REAL posterior (km mayor) pisa la base manual.
+const oilBase2 = [{ id: 2, chofer_id: 'a', km: 25000, fecha_carga: '2026-10-28' }];
+T.computeOilStatus(oilBase2, [{ chofer_id: 'a', km: 24000 }], baseMap);
+eq('aceite base: cambio real posterior resetea', oilBase2[0]._oilKmDesde, 1000);
+
+// Sin base manual (choferesBase ausente) → lógica de siempre, sin regresión.
+const oilNoBase = [{ id: 1, chofer_id: 'a', km: 1000 }, { id: 2, chofer_id: 'a', km: 30000 }];
+T.computeOilStatus(oilNoBase, [{ chofer_id: 'a', km: 1000 }]);
+eq('aceite sin base: cuenta desde el cambio real', oilNoBase[1]._oilKmDesde, 29000);
+
 // ── 8) Efectivo (fuera de cuenta corriente) ──────────────────────────
 // No debe litros en la cuenta corriente → 0 (queda fuera de la deuda).
 eq('efectivo: litrosPendientes → 0', T.litrosPendientes({ litros: 100, litros_pagados: 0, efectivo: true }), 0);

@@ -529,6 +529,10 @@ input[type="date"].inp, input[type="month"].inp { cursor: pointer; }
 .cond-avatar { width: 32px; height: 32px; border-radius: 999px; background: var(--blue-100); color: var(--blue-deep);
   display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; flex-shrink: 0; }
 .cond-nombre { flex: 1; font-weight: 600; color: var(--text); min-width: 0; }
+.cond-aceite { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-mid); border-radius: var(--radius-sm);
+  padding: 0 10px; height: 34px; cursor: pointer; font-family: var(--font); font-size: 0.8rem; font-weight: 700; white-space: nowrap; flex-shrink: 0; transition: all 0.15s; }
+.cond-aceite:hover { border-color: var(--blue); color: var(--blue); }
+.cond-aceite.is-set { background: var(--blue-50); border-color: var(--blue-100); color: var(--blue-deep); }
 .cond-del { background: var(--surface); border: 1px solid var(--border); color: var(--danger); border-radius: var(--radius-sm);
   width: 34px; height: 34px; cursor: pointer; font-size: 0.9rem; flex-shrink: 0; transition: all 0.15s; }
 .cond-del:hover { background: var(--danger); color: #fff; border-color: var(--danger); }

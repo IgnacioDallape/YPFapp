@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v46 · 2026-10-09';
+const APP_VERSION = 'v47 · 2026-10-27';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -104,21 +104,37 @@ const OIL_ALERT_KM    = 29000;   // se avisa un poco antes
 // Marca en cada remito `_oilKmDesde` = km recorridos desde el último cambio de
 // aceite del mismo chofer (un remito con cambio_aceite=true y km <= el de este).
 // null si ese chofer todavía no tiene ningún cambio registrado.
-function computeOilStatus(remitos, oilChanges) {
+//
+// `choferesBase` (opcional) = base de aceite MANUAL por chofer, seteada a mano
+// en Conductores cuando un chofer se sube a otro camión: { [chofer_id]:
+// { aceite_base, aceite_base_km, aceite_base_fecha } }. Se interpreta como un
+// punto de cambio "virtual" en el odómetro = aceite_base_km − aceite_base, y
+// SOLO se aplica a los remitos de esa fecha en adelante (los del camión nuevo),
+// para no tocar ni recalcular el historial viejo. Un cambio de aceite real
+// posterior (km mayor) lo pisa normalmente.
+function computeOilStatus(remitos, oilChanges, choferesBase) {
   const byChofer = {};
   for (const o of (oilChanges || [])) {
     if (o.km == null) continue;
     (byChofer[o.chofer_id] = byChofer[o.chofer_id] || []).push(o.km);
   }
   for (const k in byChofer) byChofer[k].sort((a, b) => a - b);
+  const base = choferesBase || {};
   for (const r of (remitos || [])) {
     r._oilKmDesde = null;
     if (r.km == null) continue;
+    // Mejor punto de cambio real (<= r.km) de los remitos marcados cambio_aceite.
+    let best = null;
     const list = byChofer[r.chofer_id];
-    if (!list) continue;
-    let last = null;
-    for (const km of list) { if (km <= r.km) last = km; else break; }
-    if (last != null) r._oilKmDesde = r.km - last;
+    if (list) { for (const km of list) { if (km <= r.km) best = km; else break; } }
+    // Base manual del chofer (punto virtual) — solo de su fecha de seteo en adelante.
+    const b = base[r.chofer_id];
+    if (b && b.aceite_base != null && b.aceite_base_km != null &&
+        (!b.aceite_base_fecha || (r.fecha_carga || '') >= b.aceite_base_fecha)) {
+      const vbase = Number(b.aceite_base_km) - Number(b.aceite_base);
+      if (vbase <= r.km && (best == null || vbase > best)) best = vbase;
+    }
+    if (best != null) r._oilKmDesde = Math.max(0, r.km - best);
   }
 }
 
@@ -1109,12 +1125,21 @@ async function loadAdminContent(useCache = false) {
       if (!res.error) oilChanges = res.data || [];
     } catch (e) { /* columna aún no creada */ }
     _oilChangesCache = oilChanges;
+
+    // Base de aceite MANUAL por chofer (tolerante si las columnas no existen).
+    _choferesBaseCache = {};
+    try {
+      const resB = await sb.from('choferes').select('id, aceite_base, aceite_base_km, aceite_base_fecha');
+      if (!resB.error) (resB.data || []).forEach(c => {
+        if (c.aceite_base != null && c.aceite_base_km != null) _choferesBaseCache[c.id] = c;
+      });
+    } catch (e) { /* columnas aún no creadas */ }
   }
 
   // En "Todos" separamos activos de archivados (sección colapsable al final).
   const activos    = S.adminTab === 'todos' ? all.filter(r => !r.archivado) : all;
   const archivados = S.adminTab === 'todos' ? all.filter(r =>  r.archivado) : [];
-  computeOilStatus(all, oilChanges);
+  computeOilStatus(all, oilChanges, _choferesBaseCache);
   computeMergeGroups(all);   // marca los remitos que forman una unión (para pintarlos)
 
   // Badge de "Pendientes" en el sidebar (remitos con deuda, no archivados).
@@ -1746,15 +1771,33 @@ async function loadDashboard(main) {
 // =====================================================
 async function loadConductores(main) {
   main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
-  const { data, error } = await sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre');
-  const choferes = data || [];
+  // Traigo también la base de aceite manual; si las columnas no existen todavía,
+  // caigo a id+nombre (tolerante) para no romper.
+  let soportaAceite = true;
+  let res = await sb.from('choferes')
+    .select('id, nombre, aceite_base, aceite_base_km, aceite_base_fecha')
+    .eq('is_admin', false).order('nombre');
+  if (res.error) {
+    soportaAceite = false;
+    res = await sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre');
+  }
+  const choferes = res.data || [];
+  const error = res.error;
+
   const rows = choferes.length
-    ? choferes.map(c => `
+    ? choferes.map(c => {
+        const tieneBase = soportaAceite && c.aceite_base != null;
+        const aceiteBtn = soportaAceite
+          ? `<button class="cond-aceite ${tieneBase ? 'is-set' : ''}" data-id="${c.id}" data-nombre="${esc(c.nombre)}" data-base="${tieneBase ? c.aceite_base : ''}" title="Km desde el último cambio de aceite">🛢 ${tieneBase ? Number(c.aceite_base).toLocaleString('es-AR') + ' km' : 'Aceite'}</button>`
+          : '';
+        return `
         <div class="cond-row">
           <span class="cond-avatar">${esc((c.nombre || '?').trim().charAt(0).toUpperCase())}</span>
           <span class="cond-nombre">${esc(c.nombre)}</span>
+          ${aceiteBtn}
           <button class="cond-del" data-id="${c.id}" data-nombre="${esc(c.nombre)}" title="Eliminar chofer">🗑</button>
-        </div>`).join('')
+        </div>`;
+      }).join('')
     : `<div class="cond-empty">No hay choferes cargados</div>`;
 
   main.innerHTML = `
@@ -1771,6 +1814,7 @@ async function loadConductores(main) {
     </div>
     <div class="panel">
       <div class="panel-title">Choferes (${choferes.length})</div>
+      ${soportaAceite ? `<p class="panel-note">El 🛢 setea los <b>km desde el último cambio de aceite</b> de cada chofer (útil cuando se cambia de camión). Cuenta desde su última carga y sigue sumando. No toca ningún remito.</p>` : ''}
       <div class="cond-list">${rows}</div>
     </div>
   `;
@@ -1790,6 +1834,72 @@ async function loadConductores(main) {
   });
   main.querySelectorAll('.cond-del').forEach(b =>
     b.addEventListener('click', () => eliminarChofer(b.dataset.id, b.dataset.nombre, () => loadConductores(main))));
+  main.querySelectorAll('.cond-aceite').forEach(b =>
+    b.addEventListener('click', () => showAceiteEditor(b.dataset.id, b.dataset.nombre, b.dataset.base === '' ? null : Number(b.dataset.base))));
+}
+
+// Editor de la base manual de aceite por chofer (km desde el último cambio).
+// Ancla el contador al odómetro + fecha de la última carga del chofer y, de ahí
+// en adelante, suma los km nuevos. No modifica ningún remito.
+function showAceiteEditor(id, nombre, actual) {
+  const el = document.createElement('div');
+  el.className = 'confirm-overlay';
+  el.innerHTML = `
+    <div class="confirm-box">
+      <div class="confirm-title">Km desde el último cambio de aceite</div>
+      <div class="confirm-sub"><b>${esc(nombre)}</b> — se ancla a su última carga y sigue sumando con los km nuevos. El aviso salta a los ${OIL_INTERVAL_KM.toLocaleString('es-AR')} km. No toca ningún remito.</div>
+      <div class="field">
+        <label class="field-label">Km recorridos desde el último cambio</label>
+        <input type="number" id="ace-input" class="inp" value="${actual != null ? actual : ''}" step="1" min="0" placeholder="Ej: 12197" inputmode="numeric" autocomplete="off">
+      </div>
+      <div class="confirm-btns" style="margin-top:14px">
+        ${actual != null ? `<button class="btn btn-ghost" id="ace-clear">Quitar</button>` : `<button class="btn btn-ghost" id="ace-cancel">Cancelar</button>`}
+        <button class="btn btn-primary" id="ace-ok">Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const close = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); };
+  el.addEventListener('click', e => { if (e.target === el) close(); });
+  el.querySelector('#ace-cancel')?.addEventListener('click', close);
+  el.querySelector('#ace-clear')?.addEventListener('click', async () => {
+    const ok = await guardarAceiteBase(id, null);
+    if (ok) toast('Base de aceite quitada (vuelve al automático) ✓'); else toast('No se pudo guardar', 'err');
+    close(); loadAdminContent();
+  });
+  el.querySelector('#ace-ok').addEventListener('click', async () => {
+    let v = parseFloat(el.querySelector('#ace-input').value);
+    if (isNaN(v) || v < 0) { toast('Ingresá un número válido', 'err'); return; }
+    const r = await guardarAceiteBase(id, v);
+    if (r === 'no-remito') { toast('Este chofer todavía no tiene cargas para anclar el contador', 'err'); return; }
+    if (r) toast(`Aceite: ${Math.round(v).toLocaleString('es-AR')} km desde el último cambio ✓`);
+    else   toast('No se pudo guardar (¿corriste la migración del aceite por chofer?)', 'err');
+    close(); loadAdminContent();
+  });
+  setTimeout(() => el.querySelector('#ace-input').focus(), 100);
+}
+
+// Guarda (o quita con valor=null) la base de aceite del chofer. Para setear, la
+// ancla al odómetro + fecha de la última carga (su camión actual).
+async function guardarAceiteBase(id, valor) {
+  if (valor == null) {
+    const { error } = await sb.from('choferes')
+      .update({ aceite_base: null, aceite_base_km: null, aceite_base_fecha: null }).eq('id', id);
+    return !error;
+  }
+  const { data } = await sb.from('remitos').select('km, fecha_carga')
+    .eq('chofer_id', id)
+    .order('fecha_carga', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(5);
+  const ultimo = (data || []).find(r => r.km != null) || null;
+  if (!ultimo) return 'no-remito';
+  const { error } = await sb.from('choferes').update({
+    aceite_base:       valor,
+    aceite_base_km:    ultimo.km,
+    aceite_base_fecha: ultimo.fecha_carga,
+  }).eq('id', id);
+  return !error;
 }
 
 // =====================================================
@@ -2187,6 +2297,7 @@ function showPagoParcial(id) {
 let _remitosCache = {};
 let _choferesList = [];
 let _oilChangesCache = [];
+let _choferesBaseCache = {};   // base de aceite manual por chofer (km desde último cambio)
 // Buscador por N° de remito (filtra las cards en el lugar, sin re-render).
 let _buscarNumero = '';
 

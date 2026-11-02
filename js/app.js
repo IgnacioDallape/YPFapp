@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v47 · 2026-10-27';
+const APP_VERSION = 'v48 · 2026-11-01';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -932,6 +932,7 @@ const ICON = {
   layers: `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`,
   clock:  `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
   users:  `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  truck:  `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
   gear:   `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   logout: `<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>`,
   menu:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
@@ -943,6 +944,7 @@ const ADMIN_NAV = [
   { tab: 'pendientes',   label: 'Pendientes',   icon: 'doc', badge: true },
   { tab: 'todos',        label: 'Todos',        icon: 'layers' },
   { tab: 'historial',    label: 'Historial',    icon: 'clock' },
+  { tab: 'unidades',     label: 'Unidades',     icon: 'truck' },
   { tab: 'conductores',  label: 'Conductores',  icon: 'users' },
   { tab: 'configuracion',label: 'Configuración',icon: 'gear'  },
 ];
@@ -1075,6 +1077,7 @@ async function loadAdminContent(useCache = false) {
   // Secciones con flujo propio (calculan sobre todo el histórico o sobre otras tablas).
   if (S.adminTab === 'historial')    return loadHistorial(main);
   if (S.adminTab === 'dashboard')    return loadDashboard(main);
+  if (S.adminTab === 'unidades')     return loadUnidades(main);
   if (S.adminTab === 'conductores')  return loadConductores(main);
   if (S.adminTab === 'configuracion')return loadConfiguracion(main);
 
@@ -1127,6 +1130,8 @@ async function loadAdminContent(useCache = false) {
     _oilChangesCache = oilChanges;
 
     // Base de aceite MANUAL por chofer (tolerante si las columnas no existen).
+    // Primero la base propia del chofer (v47); después la de su UNIDAD asignada,
+    // que tiene prioridad (la del camión manda sobre la del chofer).
     _choferesBaseCache = {};
     try {
       const resB = await sb.from('choferes').select('id, aceite_base, aceite_base_km, aceite_base_fecha');
@@ -1134,6 +1139,12 @@ async function loadAdminContent(useCache = false) {
         if (c.aceite_base != null && c.aceite_base_km != null) _choferesBaseCache[c.id] = c;
       });
     } catch (e) { /* columnas aún no creadas */ }
+    try {
+      const resU = await sb.from('unidades').select('chofer_id, aceite_base, aceite_base_km, aceite_base_fecha');
+      if (!resU.error) (resU.data || []).forEach(u => {
+        if (u.chofer_id && u.aceite_base != null && u.aceite_base_km != null) _choferesBaseCache[u.chofer_id] = u;
+      });
+    } catch (e) { /* tabla unidades aún no creada */ }
   }
 
   // En "Todos" separamos activos de archivados (sección colapsable al final).
@@ -1900,6 +1911,163 @@ async function guardarAceiteBase(id, valor) {
     aceite_base_fecha: ultimo.fecha_carga,
   }).eq('id', id);
   return !error;
+}
+
+// =====================================================
+// UNIDADES — camiones de la flota (sección propia)
+// =====================================================
+// Cada unidad se asigna a un chofer. El odómetro se muestra desde la última
+// carga del chofer; el "km desde el último cambio de aceite" se setea a mano y
+// alimenta el contador de aceite del chofer asignado (tiene prioridad sobre la
+// base propia del chofer). No toca ningún remito.
+async function loadUnidades(main) {
+  main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
+  const resU = await sb.from('unidades')
+    .select('id, numero, chofer_id, aceite_base, aceite_base_km, aceite_base_fecha').order('numero');
+  if (resU.error) {
+    main.innerHTML = `
+      <div class="section-head"><h1 class="section-title">Unidades</h1><p class="section-sub">Los camiones de la flota.</p></div>
+      <div class="panel"><p class="panel-note">Falta crear la tabla <b>unidades</b> en Supabase. Corré la <b>migración 0007</b> y recargá la app.</p></div>`;
+    return;
+  }
+  const unidades = resU.data || [];
+  const [{ data: chData }, { data: remData }] = await Promise.all([
+    sb.from('choferes').select('id, nombre').eq('is_admin', false).order('nombre'),
+    sb.from('remitos').select('chofer_id, km, fecha_carga, created_at'),
+  ]);
+  const choferes = chData || [];
+  // Odómetro = km de la última carga (por fecha, después created_at) de cada chofer.
+  const latest = {};
+  (remData || []).forEach(r => {
+    if (r.km == null) return;
+    const key = (r.fecha_carga || '') + '|' + (r.created_at || '');
+    const cur = latest[r.chofer_id];
+    if (!cur || key > cur.key) latest[r.chofer_id] = { km: r.km, fecha: r.fecha_carga, key };
+  });
+  const nombreDe = id => (choferes.find(c => c.id === id) || {}).nombre || '—';
+  const choferOpts = sel => `<option value="">— Sin asignar —</option>` +
+    choferes.map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
+
+  const rows = unidades.length ? unidades.map(u => {
+    const odo    = u.chofer_id && latest[u.chofer_id] ? latest[u.chofer_id].km.toLocaleString('es-AR') + ' km' : '—';
+    const aceite = u.aceite_base != null ? Number(u.aceite_base).toLocaleString('es-AR') + ' km' : '— (auto)';
+    return `
+      <div class="unidad-card">
+        <div class="unidad-top">
+          <span class="unidad-num">🚚 ${esc(u.numero)}</span>
+          <span class="unidad-chofer">${u.chofer_id ? esc(nombreDe(u.chofer_id)) : '<i>Sin asignar</i>'}</span>
+        </div>
+        <div class="unidad-stats">
+          <span class="unidad-stat"><span class="unidad-stat-lbl">Odómetro</span><b>${odo}</b></span>
+          <span class="unidad-stat"><span class="unidad-stat-lbl">Desde cambio de aceite</span><b>${aceite}</b></span>
+        </div>
+        <div class="unidad-actions">
+          <button class="btn btn-ghost btn-sm unidad-edit" data-id="${u.id}">✏ Editar</button>
+          <button class="btn btn-ghost btn-sm unidad-del" data-id="${u.id}" data-num="${esc(u.numero)}">🗑</button>
+        </div>
+      </div>`;
+  }).join('') : `<div class="cond-empty">No hay unidades cargadas</div>`;
+
+  main.innerHTML = `
+    <div class="section-head">
+      <h1 class="section-title">Unidades</h1>
+      <p class="section-sub">Los camiones de la flota. Cada una se asigna a un chofer: el odómetro sale de su última carga y el km de aceite lo seteás a mano. No toca ningún remito.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Agregar unidad</div>
+      <div class="form-row-2">
+        <div class="field"><label class="field-label">Número / nombre</label><input id="un-numero" class="inp" placeholder="Ej: 2036" maxlength="40" autocomplete="off"></div>
+        <div class="field"><label class="field-label">Chofer</label><select id="un-chofer" class="inp">${choferOpts('')}</select></div>
+      </div>
+      <div class="field"><label class="field-label">Km desde el último cambio de aceite <span style="font-weight:400;opacity:.7">(opcional)</span></label><input id="un-aceite" class="inp" type="number" min="0" step="1" placeholder="Ej: 24098" inputmode="numeric" autocomplete="off"></div>
+      <button id="un-add" class="btn btn-primary btn-full mt-sm">➕ Agregar unidad</button>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Unidades (${unidades.length})</div>
+      <div class="unidad-list">${rows}</div>
+    </div>
+  `;
+
+  const addBtn = main.querySelector('#un-add');
+  addBtn.addEventListener('click', async () => {
+    const numero = main.querySelector('#un-numero').value.trim();
+    const choferId = main.querySelector('#un-chofer').value || null;
+    let aceite = parseFloat(main.querySelector('#un-aceite').value);
+    if (isNaN(aceite)) aceite = null;
+    if (numero.length < 1) { toast('Poné un número de unidad', 'err'); return; }
+    addBtn.disabled = true;
+    const ok = await guardarUnidad(null, { numero, chofer_id: choferId }, aceite, null, latest);
+    addBtn.disabled = false;
+    if (ok) { toast(`Unidad ${numero} creada ✓`); loadUnidades(main); }
+    else toast('No se pudo crear (¿corriste la migración de unidades?)', 'err');
+  });
+  main.querySelectorAll('.unidad-edit').forEach(b =>
+    b.addEventListener('click', () => showUnidadEditor(unidades.find(u => u.id === b.dataset.id), choferes, latest, () => loadUnidades(main))));
+  main.querySelectorAll('.unidad-del').forEach(b =>
+    b.addEventListener('click', () => eliminarUnidad(b.dataset.id, b.dataset.num, () => loadUnidades(main))));
+}
+
+// Crea (id=null) o actualiza una unidad. Si se pasa `aceite` y el chofer tiene
+// cargas, ancla el contador de aceite a su última carga; si el valor no cambió
+// respecto al previo, mantiene el ancla para que no salte.
+async function guardarUnidad(id, campos, aceite, prev, latest) {
+  const payload = { ...campos };
+  const choferId = campos.chofer_id;
+  if (aceite == null) {
+    payload.aceite_base = null; payload.aceite_base_km = null; payload.aceite_base_fecha = null;
+  } else if (prev && aceite === Number(prev.aceite_base) && prev.aceite_base_km != null) {
+    payload.aceite_base = aceite; payload.aceite_base_km = prev.aceite_base_km; payload.aceite_base_fecha = prev.aceite_base_fecha;
+  } else if (choferId && latest[choferId]) {
+    payload.aceite_base = aceite; payload.aceite_base_km = latest[choferId].km; payload.aceite_base_fecha = latest[choferId].fecha;
+  } else {
+    payload.aceite_base = aceite; payload.aceite_base_km = null; payload.aceite_base_fecha = null;
+  }
+  const { error } = id
+    ? await sb.from('unidades').update(payload).eq('id', id)
+    : await sb.from('unidades').insert(payload);
+  return !error;
+}
+
+function eliminarUnidad(id, numero, onOk) {
+  showConfirm(`¿Eliminar la unidad "${esc(numero)}"?`, 'Solo borra la unidad — no toca choferes ni remitos.', 'Eliminar', async () => {
+    const { error } = await sb.from('unidades').delete().eq('id', id);
+    if (error) { toast('No se pudo eliminar', 'err'); return; }
+    toast('Unidad eliminada ✓'); onOk && onOk();
+  });
+}
+
+function showUnidadEditor(unidad, choferes, latest, onOk) {
+  if (!unidad) return;
+  const opts = `<option value="">— Sin asignar —</option>` +
+    choferes.map(c => `<option value="${c.id}" ${c.id === unidad.chofer_id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
+  const el = document.createElement('div'); el.className = 'confirm-overlay';
+  el.innerHTML = `
+    <div class="confirm-box">
+      <div class="confirm-title">Editar unidad</div>
+      <div class="confirm-sub">El odómetro sale solo de la última carga del chofer. El km de aceite se ancla a esa carga y suma de ahí. Vacío = automático.</div>
+      <div class="field"><label class="field-label">Número / nombre</label><input id="ue-numero" class="inp" value="${esc(unidad.numero)}" maxlength="40"></div>
+      <div class="field"><label class="field-label">Chofer</label><select id="ue-chofer" class="inp">${opts}</select></div>
+      <div class="field"><label class="field-label">Km desde el último cambio de aceite</label><input id="ue-aceite" class="inp" type="number" min="0" step="1" value="${unidad.aceite_base != null ? unidad.aceite_base : ''}" placeholder="(vacío = automático)" inputmode="numeric"></div>
+      <div class="confirm-btns" style="margin-top:14px">
+        <button class="btn btn-ghost" id="ue-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="ue-ok">Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const close = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); };
+  el.addEventListener('click', e => { if (e.target === el) close(); });
+  el.querySelector('#ue-cancel').addEventListener('click', close);
+  el.querySelector('#ue-ok').addEventListener('click', async () => {
+    const numero = el.querySelector('#ue-numero').value.trim();
+    const choferId = el.querySelector('#ue-chofer').value || null;
+    let aceite = parseFloat(el.querySelector('#ue-aceite').value);
+    if (isNaN(aceite)) aceite = null;
+    if (numero.length < 1) { toast('Poné un número de unidad', 'err'); return; }
+    const ok = await guardarUnidad(unidad.id, { numero, chofer_id: choferId }, aceite, unidad, latest);
+    if (!ok) { toast('No se pudo guardar', 'err'); return; }
+    toast('Unidad actualizada ✓'); close(); onOk && onOk();
+  });
 }
 
 // =====================================================

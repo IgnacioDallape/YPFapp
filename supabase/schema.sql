@@ -56,6 +56,18 @@ create table if not exists config (
   value text
 );
 
+-- Unidades (camiones de la flota). Cada una se asigna a un chofer.
+create table if not exists unidades (
+  id                uuid primary key default gen_random_uuid(),
+  numero            text not null,
+  chofer_id         uuid references choferes(id) on delete set null,
+  aceite_base       numeric,              -- km desde el último cambio de aceite (a mano)
+  aceite_base_km    numeric,              -- odómetro de la carga a la que se ancló
+  aceite_base_fecha date,
+  created_at        timestamptz default now()
+);
+create index if not exists idx_unidades_chofer_id on unidades(chofer_id);
+
 -- ── Columnas agregadas en migraciones (idempotente para bases viejas) ─
 alter table choferes add column if not exists pin            text;
 alter table choferes add column if not exists aceite_base       numeric;
@@ -91,3 +103,4 @@ alter table choferes     disable row level security;
 alter table remitos      disable row level security;
 alter table remito_fotos disable row level security;
 alter table config       disable row level security;
+alter table unidades     disable row level security;

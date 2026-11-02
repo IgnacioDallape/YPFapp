@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v48 · 2026-11-01';
+const APP_VERSION = 'v50 · 2026-11-02';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -1140,7 +1140,8 @@ async function loadAdminContent(useCache = false) {
       });
     } catch (e) { /* columnas aún no creadas */ }
     try {
-      const resU = await sb.from('unidades').select('chofer_id, aceite_base, aceite_base_km, aceite_base_fecha');
+      // order determinista: si (por error) un chofer tuviera 2 unidades, gana la de mayor número, no al azar.
+      const resU = await sb.from('unidades').select('chofer_id, aceite_base, aceite_base_km, aceite_base_fecha').order('numero');
       if (!resU.error) (resU.data || []).forEach(u => {
         if (u.chofer_id && u.aceite_base != null && u.aceite_base_km != null) _choferesBaseCache[u.chofer_id] = u;
       });
@@ -1798,8 +1799,10 @@ async function loadConductores(main) {
   const rows = choferes.length
     ? choferes.map(c => {
         const tieneBase = soportaAceite && c.aceite_base != null;
+        const oCambio   = (soportaAceite && c.aceite_base != null && c.aceite_base_km != null)
+          ? Number(c.aceite_base_km) - Number(c.aceite_base) : null;   // odómetro del último cambio
         const aceiteBtn = soportaAceite
-          ? `<button class="cond-aceite ${tieneBase ? 'is-set' : ''}" data-id="${c.id}" data-nombre="${esc(c.nombre)}" data-base="${tieneBase ? c.aceite_base : ''}" title="Km desde el último cambio de aceite">🛢 ${tieneBase ? Number(c.aceite_base).toLocaleString('es-AR') + ' km' : 'Aceite'}</button>`
+          ? `<button class="cond-aceite ${tieneBase ? 'is-set' : ''}" data-id="${c.id}" data-nombre="${esc(c.nombre)}" data-odo="${oCambio != null ? oCambio : ''}" title="Odómetro del último cambio de aceite">🛢 ${tieneBase ? Number(c.aceite_base).toLocaleString('es-AR') + ' km' : 'Aceite'}</button>`
           : '';
         return `
         <div class="cond-row">
@@ -1846,25 +1849,25 @@ async function loadConductores(main) {
   main.querySelectorAll('.cond-del').forEach(b =>
     b.addEventListener('click', () => eliminarChofer(b.dataset.id, b.dataset.nombre, () => loadConductores(main))));
   main.querySelectorAll('.cond-aceite').forEach(b =>
-    b.addEventListener('click', () => showAceiteEditor(b.dataset.id, b.dataset.nombre, b.dataset.base === '' ? null : Number(b.dataset.base))));
+    b.addEventListener('click', () => showAceiteEditor(b.dataset.id, b.dataset.nombre, b.dataset.odo === '' ? null : Number(b.dataset.odo))));
 }
 
-// Editor de la base manual de aceite por chofer (km desde el último cambio).
-// Ancla el contador al odómetro + fecha de la última carga del chofer y, de ahí
-// en adelante, suma los km nuevos. No modifica ningún remito.
-function showAceiteEditor(id, nombre, actual) {
+// Editor de aceite por chofer. Se carga el ODÓMETRO del último cambio (el km del
+// tablero cuando se cambió). La app cuenta los km desde ahí (anclado a la última
+// carga) y avisa a los 30.000. No modifica ningún remito.
+function showAceiteEditor(id, nombre, odoActual) {
   const el = document.createElement('div');
   el.className = 'confirm-overlay';
   el.innerHTML = `
     <div class="confirm-box">
-      <div class="confirm-title">Km desde el último cambio de aceite</div>
-      <div class="confirm-sub"><b>${esc(nombre)}</b> — se ancla a su última carga y sigue sumando con los km nuevos. El aviso salta a los ${OIL_INTERVAL_KM.toLocaleString('es-AR')} km. No toca ningún remito.</div>
+      <div class="confirm-title">Último cambio de aceite</div>
+      <div class="confirm-sub"><b>${esc(nombre)}</b> — poné el <b>odómetro</b> de cuando le cambiaste el aceite (el km del tablero). La app cuenta los km desde ahí y avisa a los ${OIL_INTERVAL_KM.toLocaleString('es-AR')} km. No toca ningún remito.</div>
       <div class="field">
-        <label class="field-label">Km recorridos desde el último cambio</label>
-        <input type="number" id="ace-input" class="inp" value="${actual != null ? actual : ''}" step="1" min="0" placeholder="Ej: 12197" inputmode="numeric" autocomplete="off">
+        <label class="field-label">Odómetro del último cambio de aceite</label>
+        <input type="number" id="ace-input" class="inp" value="${odoActual != null ? odoActual : ''}" step="1" min="0" placeholder="Ej: 1200300" inputmode="numeric" autocomplete="off">
       </div>
       <div class="confirm-btns" style="margin-top:14px">
-        ${actual != null ? `<button class="btn btn-ghost" id="ace-clear">Quitar</button>` : `<button class="btn btn-ghost" id="ace-cancel">Cancelar</button>`}
+        ${odoActual != null ? `<button class="btn btn-ghost" id="ace-clear">Quitar</button>` : `<button class="btn btn-ghost" id="ace-cancel">Cancelar</button>`}
         <button class="btn btn-primary" id="ace-ok">Guardar</button>
       </div>
     </div>`;
@@ -1875,7 +1878,7 @@ function showAceiteEditor(id, nombre, actual) {
   el.querySelector('#ace-cancel')?.addEventListener('click', close);
   el.querySelector('#ace-clear')?.addEventListener('click', async () => {
     const ok = await guardarAceiteBase(id, null);
-    if (ok) toast('Base de aceite quitada (vuelve al automático) ✓'); else toast('No se pudo guardar', 'err');
+    if (ok) toast('Aceite quitado (vuelve al automático) ✓'); else toast('No se pudo guardar', 'err');
     close(); loadAdminContent();
   });
   el.querySelector('#ace-ok').addEventListener('click', async () => {
@@ -1883,17 +1886,18 @@ function showAceiteEditor(id, nombre, actual) {
     if (isNaN(v) || v < 0) { toast('Ingresá un número válido', 'err'); return; }
     const r = await guardarAceiteBase(id, v);
     if (r === 'no-remito') { toast('Este chofer todavía no tiene cargas para anclar el contador', 'err'); return; }
-    if (r) toast(`Aceite: ${Math.round(v).toLocaleString('es-AR')} km desde el último cambio ✓`);
+    if (r) toast('Último cambio de aceite guardado ✓');
     else   toast('No se pudo guardar (¿corriste la migración del aceite por chofer?)', 'err');
     close(); loadAdminContent();
   });
   setTimeout(() => el.querySelector('#ace-input').focus(), 100);
 }
 
-// Guarda (o quita con valor=null) la base de aceite del chofer. Para setear, la
-// ancla al odómetro + fecha de la última carga (su camión actual).
-async function guardarAceiteBase(id, valor) {
-  if (valor == null) {
+// Guarda (o quita con odo=null) el aceite del chofer. `odo` = ODÓMETRO del último
+// cambio; se convierte a "km desde el cambio" anclado a la última carga:
+//   aceite_base = max(0, odómetro_de_la_última_carga − odo).
+async function guardarAceiteBase(id, odo) {
+  if (odo == null) {
     const { error } = await sb.from('choferes')
       .update({ aceite_base: null, aceite_base_km: null, aceite_base_fecha: null }).eq('id', id);
     return !error;
@@ -1906,7 +1910,7 @@ async function guardarAceiteBase(id, valor) {
   const ultimo = (data || []).find(r => r.km != null) || null;
   if (!ultimo) return 'no-remito';
   const { error } = await sb.from('choferes').update({
-    aceite_base:       valor,
+    aceite_base:       Math.max(0, ultimo.km - odo),
     aceite_base_km:    ultimo.km,
     aceite_base_fecha: ultimo.fecha_carga,
   }).eq('id', id);
@@ -1945,12 +1949,19 @@ async function loadUnidades(main) {
     if (!cur || key > cur.key) latest[r.chofer_id] = { km: r.km, fecha: r.fecha_carga, key };
   });
   const nombreDe = id => (choferes.find(c => c.id === id) || {}).nombre || '—';
+  // Choferes ya asignados a alguna unidad → no se ofrecen para otra (1 unidad por chofer).
+  const asignados = new Set(unidades.filter(u => u.chofer_id).map(u => u.chofer_id));
   const choferOpts = sel => `<option value="">— Sin asignar —</option>` +
-    choferes.map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
+    choferes.filter(c => c.id === sel || !asignados.has(c.id))
+      .map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
 
   const rows = unidades.length ? unidades.map(u => {
-    const odo    = u.chofer_id && latest[u.chofer_id] ? latest[u.chofer_id].km.toLocaleString('es-AR') + ' km' : '—';
-    const aceite = u.aceite_base != null ? Number(u.aceite_base).toLocaleString('es-AR') + ' km' : '— (auto)';
+    const odoKm  = u.chofer_id && latest[u.chofer_id] ? latest[u.chofer_id].km : null;
+    const odo    = odoKm != null ? odoKm.toLocaleString('es-AR') + ' km' : '—';
+    // Contador en vivo = odómetro actual − odómetro del último cambio.
+    const oCambio = odoCambioDe(u);
+    const desde = (oCambio != null && odoKm != null) ? Math.max(0, odoKm - oCambio) : null;
+    const aceite = desde != null ? desde.toLocaleString('es-AR') + ' km' : (oCambio != null ? '—' : '— (auto)');
     return `
       <div class="unidad-card">
         <div class="unidad-top">
@@ -1979,7 +1990,7 @@ async function loadUnidades(main) {
         <div class="field"><label class="field-label">Número / nombre</label><input id="un-numero" class="inp" placeholder="Ej: 2036" maxlength="40" autocomplete="off"></div>
         <div class="field"><label class="field-label">Chofer</label><select id="un-chofer" class="inp">${choferOpts('')}</select></div>
       </div>
-      <div class="field"><label class="field-label">Km desde el último cambio de aceite <span style="font-weight:400;opacity:.7">(opcional)</span></label><input id="un-aceite" class="inp" type="number" min="0" step="1" placeholder="Ej: 24098" inputmode="numeric" autocomplete="off"></div>
+      <div class="field"><label class="field-label">Odómetro del último cambio de aceite <span style="font-weight:400;opacity:.7">(opcional)</span></label><input id="un-aceite" class="inp" type="number" min="0" step="1" placeholder="Ej: 1200300 (el km del tablero cuando cambiaste el aceite)" inputmode="numeric" autocomplete="off"></div>
       <button id="un-add" class="btn btn-primary btn-full mt-sm">➕ Agregar unidad</button>
     </div>
     <div class="panel">
@@ -1996,36 +2007,54 @@ async function loadUnidades(main) {
     if (isNaN(aceite)) aceite = null;
     if (numero.length < 1) { toast('Poné un número de unidad', 'err'); return; }
     addBtn.disabled = true;
-    const ok = await guardarUnidad(null, { numero, chofer_id: choferId }, aceite, null, latest);
+    const r = await guardarUnidad(null, { numero, chofer_id: choferId }, aceite, null, latest);
     addBtn.disabled = false;
-    if (ok) { toast(`Unidad ${numero} creada ✓`); loadUnidades(main); }
+    if (r === 'sin-ancla') { toast('Unidad creada. El km de aceite necesita que el chofer tenga una carga — cargalo después.', 'warn'); loadUnidades(main); }
+    else if (r) { toast(`Unidad ${numero} creada ✓`); loadUnidades(main); }
     else toast('No se pudo crear (¿corriste la migración de unidades?)', 'err');
   });
   main.querySelectorAll('.unidad-edit').forEach(b =>
-    b.addEventListener('click', () => showUnidadEditor(unidades.find(u => u.id === b.dataset.id), choferes, latest, () => loadUnidades(main))));
+    b.addEventListener('click', () => showUnidadEditor(unidades.find(u => u.id === b.dataset.id), choferes, latest, asignados, () => loadUnidades(main))));
   main.querySelectorAll('.unidad-del').forEach(b =>
     b.addEventListener('click', () => eliminarUnidad(b.dataset.id, b.dataset.num, () => loadUnidades(main))));
 }
 
-// Crea (id=null) o actualiza una unidad. Si se pasa `aceite` y el chofer tiene
-// cargas, ancla el contador de aceite a su última carga; si el valor no cambió
-// respecto al previo, mantiene el ancla para que no salte.
-async function guardarUnidad(id, campos, aceite, prev, latest) {
+// Odómetro del último cambio de aceite guardado en una unidad (o null).
+// Internamente guardamos aceite_base = km desde el cambio = aceite_base_km − odo,
+// así que el odómetro del cambio = aceite_base_km − aceite_base.
+function odoCambioDe(u) {
+  return (u && u.aceite_base != null && u.aceite_base_km != null)
+    ? Number(u.aceite_base_km) - Number(u.aceite_base) : null;
+}
+
+// Crea (id=null) o actualiza una unidad.
+// `odo` = ODÓMETRO del último cambio de aceite (el km del tablero cuando se cambió).
+// Se convierte a "km desde el cambio" anclado a la última carga del chofer:
+//   aceite_base = max(0, odómetro_de_la_última_carga − odo).
+// Devuelve: true (ok) · 'sin-ancla' (ok pero no se pudo anclar) · false (error).
+async function guardarUnidad(id, campos, odo, prev, latest) {
   const payload = { ...campos };
   const choferId = campos.chofer_id;
-  if (aceite == null) {
+  const prevOdo = odoCambioDe(prev);
+  let sinAncla = false;
+  if (odo == null) {
     payload.aceite_base = null; payload.aceite_base_km = null; payload.aceite_base_fecha = null;
-  } else if (prev && aceite === Number(prev.aceite_base) && prev.aceite_base_km != null) {
-    payload.aceite_base = aceite; payload.aceite_base_km = prev.aceite_base_km; payload.aceite_base_fecha = prev.aceite_base_fecha;
+  } else if (prev && prev.chofer_id === choferId && prevOdo != null && odo === prevOdo) {
+    // mismo chofer y mismo odómetro de cambio → mantengo el ancla (no salta al renombrar)
+    payload.aceite_base = prev.aceite_base; payload.aceite_base_km = prev.aceite_base_km; payload.aceite_base_fecha = prev.aceite_base_fecha;
   } else if (choferId && latest[choferId]) {
-    payload.aceite_base = aceite; payload.aceite_base_km = latest[choferId].km; payload.aceite_base_fecha = latest[choferId].fecha;
+    payload.aceite_base = Math.max(0, latest[choferId].km - odo);
+    payload.aceite_base_km = latest[choferId].km;
+    payload.aceite_base_fecha = latest[choferId].fecha;
   } else {
-    payload.aceite_base = aceite; payload.aceite_base_km = null; payload.aceite_base_fecha = null;
+    payload.aceite_base = null; payload.aceite_base_km = null; payload.aceite_base_fecha = null;
+    sinAncla = true;   // pidieron odómetro de cambio pero no hay carga/chofer para anclar
   }
   const { error } = id
     ? await sb.from('unidades').update(payload).eq('id', id)
     : await sb.from('unidades').insert(payload);
-  return !error;
+  if (error) return false;
+  return sinAncla ? 'sin-ancla' : true;
 }
 
 function eliminarUnidad(id, numero, onOk) {
@@ -2036,18 +2065,21 @@ function eliminarUnidad(id, numero, onOk) {
   });
 }
 
-function showUnidadEditor(unidad, choferes, latest, onOk) {
+function showUnidadEditor(unidad, choferes, latest, asignados, onOk) {
   if (!unidad) return;
+  // No ofrecer choferes ya asignados a OTRA unidad (sí el actual de esta unidad).
+  const yaAsig = asignados || new Set();
   const opts = `<option value="">— Sin asignar —</option>` +
-    choferes.map(c => `<option value="${c.id}" ${c.id === unidad.chofer_id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
+    choferes.filter(c => c.id === unidad.chofer_id || !yaAsig.has(c.id))
+      .map(c => `<option value="${c.id}" ${c.id === unidad.chofer_id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
   const el = document.createElement('div'); el.className = 'confirm-overlay';
   el.innerHTML = `
     <div class="confirm-box">
       <div class="confirm-title">Editar unidad</div>
-      <div class="confirm-sub">El odómetro sale solo de la última carga del chofer. El km de aceite se ancla a esa carga y suma de ahí. Vacío = automático.</div>
+      <div class="confirm-sub">El odómetro actual sale solo de la última carga del chofer. Poné el odómetro de cuando le cambiaste el aceite y la app cuenta los km desde ahí (aviso a los ${OIL_INTERVAL_KM.toLocaleString('es-AR')} km). Vacío = automático.</div>
       <div class="field"><label class="field-label">Número / nombre</label><input id="ue-numero" class="inp" value="${esc(unidad.numero)}" maxlength="40"></div>
       <div class="field"><label class="field-label">Chofer</label><select id="ue-chofer" class="inp">${opts}</select></div>
-      <div class="field"><label class="field-label">Km desde el último cambio de aceite</label><input id="ue-aceite" class="inp" type="number" min="0" step="1" value="${unidad.aceite_base != null ? unidad.aceite_base : ''}" placeholder="(vacío = automático)" inputmode="numeric"></div>
+      <div class="field"><label class="field-label">Odómetro del último cambio de aceite</label><input id="ue-aceite" class="inp" type="number" min="0" step="1" value="${odoCambioDe(unidad) != null ? odoCambioDe(unidad) : ''}" placeholder="(vacío = automático)" inputmode="numeric"></div>
       <div class="confirm-btns" style="margin-top:14px">
         <button class="btn btn-ghost" id="ue-cancel">Cancelar</button>
         <button class="btn btn-primary" id="ue-ok">Guardar</button>
@@ -2064,9 +2096,11 @@ function showUnidadEditor(unidad, choferes, latest, onOk) {
     let aceite = parseFloat(el.querySelector('#ue-aceite').value);
     if (isNaN(aceite)) aceite = null;
     if (numero.length < 1) { toast('Poné un número de unidad', 'err'); return; }
-    const ok = await guardarUnidad(unidad.id, { numero, chofer_id: choferId }, aceite, unidad, latest);
-    if (!ok) { toast('No se pudo guardar', 'err'); return; }
-    toast('Unidad actualizada ✓'); close(); onOk && onOk();
+    const r = await guardarUnidad(unidad.id, { numero, chofer_id: choferId }, aceite, unidad, latest);
+    if (r === false) { toast('No se pudo guardar', 'err'); return; }
+    if (r === 'sin-ancla') toast('Guardado. El km de aceite necesita que el chofer tenga una carga.', 'warn');
+    else toast('Unidad actualizada ✓');
+    close(); onOk && onOk();
   });
 }
 

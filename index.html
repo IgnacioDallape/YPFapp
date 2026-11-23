@@ -11,7 +11,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Remitos">
-  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 
   <title>RemitosApp</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,8 +40,19 @@
               }
             });
           });
+          // Si YA había una versión nueva descargada esperando (de una sesión anterior),
+          // mostrar el aviso igual: 'updatefound' se dispara una sola vez, y si se cerró
+          // la app sin tocar "Actualizar" el aviso no volvía a salir nunca (celu trabado en v46).
+          const avisarSiEspera = () => {
+            if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg.waiting);
+          };
+          avisarSiEspera();
           // Chequear actualizaciones cada 60s mientras la app está abierta
-          setInterval(() => reg.update().catch(() => {}), 60000);
+          setInterval(() => reg.update().then(avisarSiEspera).catch(() => {}), 60000);
+          // y al volver a la app desde segundo plano (en el celu el 'load' no se repite)
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') reg.update().then(avisarSiEspera).catch(() => {});
+          });
         }).catch(err => console.warn('SW error:', err));
 
         // Cuando el nuevo SW toma control → recargar para usar el código fresco

@@ -2,7 +2,7 @@
 // =====================================================
 // VERSIÓN — bumpear en cada deploy (también bumpear CACHE en sw.js)
 // =====================================================
-const APP_VERSION = 'v50 · 2026-11-02';
+const APP_VERSION = 'v52 · 2026-11-23';
 
 // =====================================================
 // CONFIG — reemplazar con tus credenciales de Supabase
@@ -60,7 +60,8 @@ function toast(msg, type = 'ok') {
   el.textContent = msg;
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
-  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 350); }, 3200);
+  const ms = Math.max(3200, String(msg).length * 55);   // los mensajes largos quedan más tiempo
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 350); }, ms);
 }
 
 function setLoading(msg = 'Cargando...') {
@@ -101,53 +102,174 @@ function estadoPago(r) {
 const OIL_INTERVAL_KM = 30000;   // intervalo nominal
 const OIL_ALERT_KM    = 29000;   // se avisa un poco antes
 
-// Marca en cada remito `_oilKmDesde` = km recorridos desde el último cambio de
-// aceite del mismo chofer (un remito con cambio_aceite=true y km <= el de este).
-// null si ese chofer todavía no tiene ningún cambio registrado.
-//
-// `choferesBase` (opcional) = base de aceite MANUAL por chofer, seteada a mano
-// en Conductores cuando un chofer se sube a otro camión: { [chofer_id]:
-// { aceite_base, aceite_base_km, aceite_base_fecha } }. Se interpreta como un
-// punto de cambio "virtual" en el odómetro = aceite_base_km − aceite_base, y
-// SOLO se aplica a los remitos de esa fecha en adelante (los del camión nuevo),
-// para no tocar ni recalcular el historial viejo. Un cambio de aceite real
-// posterior (km mayor) lo pisa normalmente.
-function computeOilStatus(remitos, oilChanges, choferesBase) {
+// =====================================================
+// FORMACIONES — reconstrucción de cada CAMIÓN por continuidad del odómetro
+// =====================================================
+// El km lo marca el camión, no el chofer. Cuando los choferes rotan de camión, el
+// historial de un chofer mezcla dos odómetros (ej. Rolando: 22.519 del viejo y
+// 1.220.376 del nuevo). Para que consumo y aceite sigan al CAMIÓN, reconstruimos
+// cada camión ("cadena") a partir de los remitos, sin tocar ningún dato:
+//   1) por chofer, en orden cronológico, se corta un TRAMO cada vez que el odómetro
+//      salta (sube o baja) más de VIAJE_MAX_KM → se subió a otro camión;
+//   2) cada tramo nuevo (salvo el primero de cada chofer) se ENLAZA con el tramo de
+//      cualquier chofer que terminó antes y cuyo último km queda justo debajo
+//      (0..VIAJE_MAX_KM) → es el mismo camión, manejado ahora por otra persona.
+// Un tramo real entre dos cargas nunca supera VIAJE_MAX_KM.
+const VIAJE_MAX_KM    = 50000;    // distancia máxima creíble entre dos cargas del mismo camión
+const OIL_MAX_SANE_KM = 150000;   // "km desde el cambio" por encima = no es real (dato de otro camión / mal cargado)
+
+// Orden cronológico de cargas: fecha, y dentro del mismo día por odómetro.
+function cmpCrono(a, b) {
+  const fa = a.fecha_carga || '', fb = b.fecha_carga || '';
+  if (fa !== fb) return fa < fb ? -1 : 1;
+  const d = (Number(a.km) || 0) - (Number(b.km) || 0);
+  if (d) return d;
+  const ca = a.created_at || '', cb = b.created_at || '';
+  return ca < cb ? -1 : ca > cb ? 1 : 0;
+}
+
+// Marca `r._chain` (id del camión reconstruido) en cada remito con km.
+function computeChains(remitos) {
   const byChofer = {};
-  for (const o of (oilChanges || [])) {
-    if (o.km == null) continue;
-    (byChofer[o.chofer_id] = byChofer[o.chofer_id] || []).push(o.km);
-  }
-  for (const k in byChofer) byChofer[k].sort((a, b) => a - b);
-  const base = choferesBase || {};
   for (const r of (remitos || [])) {
+    r._chain = null;
+    if (r.km == null) continue;
+    (byChofer[r.chofer_id] = byChofer[r.chofer_id] || []).push(r);
+  }
+  // 1) tramos por chofer
+  const segs = [];
+  for (const cid in byChofer) {
+    const rs = byChofer[cid].slice().sort(cmpCrono);
+    let cur = null, ord = 0, prevKm = null;
+    for (const r of rs) {
+      const km = Number(r.km);
+      if (!cur || Math.abs(km - prevKm) > VIAJE_MAX_KM) {
+        cur = { ord: ord++, rs: [], first: r, last: r, minKm: km, maxKm: km };
+        segs.push(cur);
+      }
+      cur.rs.push(r); cur.last = r;
+      if (km < cur.minKm) cur.minKm = km;
+      if (km > cur.maxKm) cur.maxKm = km;
+      prevKm = km;
+    }
+  }
+  // 2) enlazar tramos en camiones
+  segs.sort((a, b) => cmpCrono(a.first, b.first));
+  const tails = [];   // último tramo de cada camión hasta ahora
+  let nextId = 0;
+  for (const s of segs) {
+    let pred = null, predDiff = Infinity;
+    if (s.ord > 0) {  // el primer tramo de un chofer es el inicio de su historial: no se enlaza
+      for (const t of tails) {
+        if (cmpCrono(t.last, s.first) > 0) continue;          // ese camión seguía en uso cuando empezó s
+        const diff = s.minKm - t.maxKm;
+        if (diff < 0 || diff > VIAJE_MAX_KM) continue;
+        if (diff < predDiff || (diff === predDiff && cmpCrono(t.last, pred.last) > 0)) { pred = t; predDiff = diff; }
+      }
+    }
+    if (pred) { s.chain = pred.chain; tails.splice(tails.indexOf(pred), 1); }
+    else      { s.chain = 'c' + (nextId++); }
+    tails.push(s);
+    for (const r of s.rs) r._chain = s.chain;
+  }
+}
+
+// Punto de cambio de aceite (odómetro) que representa una base manual.
+// Normal: aceite_base = km desde el cambio → odómetro = aceite_base_km − aceite_base.
+// Si aceite_base es absurdo (> OIL_MAX_SANE_KM) es porque se cargó el ODÓMETRO en el
+// campo viejo de "km desde": lo tomamos como el odómetro del cambio.
+function vbaseDe(b) {
+  if (!b || b.aceite_base == null) return null;
+  const ab = Number(b.aceite_base);
+  if (ab > OIL_MAX_SANE_KM) return ab;
+  if (b.aceite_base_km == null) return null;
+  return Number(b.aceite_base_km) - ab;
+}
+
+// Marca en cada remito `_oilKmDesde` = km recorridos desde el último cambio de
+// aceite DEL MISMO CAMIÓN (cadena), sin importar qué chofer lo manejaba.
+// Puntos de cambio: remitos con cambio_aceite=true (de `remitos`) + `oilChanges`
+// ({chofer_id, km}, opcional/legacy).
+// `choferesBase` (opcional) = base MANUAL { [chofer_id]: {aceite_base, aceite_base_km,
+// aceite_base_fecha} } (del chofer o de su unidad). Se ubica en el camión de la carga
+// a la que se ancló y aplica desde esa fecha en adelante. Un cambio real posterior
+// (km mayor) la pisa.
+function computeOilStatus(remitos, oilChanges, choferesBase) {
+  const list = remitos || [];
+  computeChains(list);
+  const conKm = list.filter(r => r.km != null);
+  // Camión de un punto {chofer_id, km}: remito exacto de ese chofer; si no, el tramo
+  // de ese chofer más cercano en km.
+  const chainDe = (cid, km, fecha) => {
+    km = Number(km);
+    const exact = conKm.find(r => r.chofer_id === cid && Number(r.km) === km && (!fecha || r.fecha_carga === fecha))
+               || conKm.find(r => r.chofer_id === cid && Number(r.km) === km);
+    if (exact) return exact._chain;
+    let best = null, bestD = Infinity;
+    for (const r of conKm) {
+      if (r.chofer_id !== cid) continue;
+      const d = Math.abs(Number(r.km) - km);
+      if (d < bestD) { bestD = d; best = r._chain; }
+    }
+    return best;
+  };
+  // Puntos de cambio por camión
+  const puntos = {};
+  const addPunto = (chain, km) => {
+    if (chain == null || km == null) return;
+    const arr = (puntos[chain] = puntos[chain] || []);
+    if (!arr.includes(Number(km))) arr.push(Number(km));
+  };
+  for (const r of conKm) if (r.cambio_aceite) addPunto(r._chain, r.km);
+  for (const o of (oilChanges || [])) if (o.km != null) addPunto(chainDe(o.chofer_id, o.km), o.km);
+  for (const k in puntos) puntos[k].sort((a, b) => a - b);
+  // Bases manuales → camión del ancla (o, si no se encuentra el ancla, por chofer)
+  const bases = [];
+  for (const cid in (choferesBase || {})) {
+    const b = choferesBase[cid];
+    const vb = vbaseDe(b);
+    if (vb == null) continue;
+    let chain = null;
+    if (b.aceite_base_km != null) {
+      const anc = conKm.find(r => r.chofer_id === cid && Number(r.km) === Number(b.aceite_base_km))
+               || conKm.find(r => Number(r.km) === Number(b.aceite_base_km) && (!b.aceite_base_fecha || r.fecha_carga === b.aceite_base_fecha));
+      if (anc) chain = anc._chain;
+    }
+    bases.push({ chain, cid, vb, fecha: b.aceite_base_fecha || '', ancla: Number(b.aceite_base_km) || 0 });
+  }
+  for (const r of list) {
     r._oilKmDesde = null;
     if (r.km == null) continue;
-    // Mejor punto de cambio real (<= r.km) de los remitos marcados cambio_aceite.
+    const km = Number(r.km);
     let best = null;
-    const list = byChofer[r.chofer_id];
-    if (list) { for (const km of list) { if (km <= r.km) best = km; else break; } }
-    // Base manual del chofer (punto virtual) — solo de su fecha de seteo en adelante.
-    const b = base[r.chofer_id];
-    if (b && b.aceite_base != null && b.aceite_base_km != null &&
-        (!b.aceite_base_fecha || (r.fecha_carga || '') >= b.aceite_base_fecha)) {
-      const vbase = Number(b.aceite_base_km) - Number(b.aceite_base);
-      if (vbase <= r.km && (best == null || vbase > best)) best = vbase;
+    for (const p of (puntos[r._chain] || [])) { if (p <= km) best = p; else break; }
+    // Base aplicable más reciente para este camión (o para este chofer, si no tiene camión ubicado)
+    let bSel = null;
+    for (const b of bases) {
+      const aplica = b.chain != null ? b.chain === r._chain : b.cid === r.chofer_id;
+      if (!aplica || (b.fecha && (r.fecha_carga || '') < b.fecha)) continue;
+      if (!bSel || b.fecha > bSel.fecha || (b.fecha === bSel.fecha && b.ancla > bSel.ancla)) bSel = b;
     }
-    if (best != null) r._oilKmDesde = Math.max(0, r.km - best);
+    if (bSel && bSel.vb <= km && (best == null || bSel.vb > best)) best = bSel.vb;
+    if (best != null) {
+      const desde = Math.max(0, km - best);
+      r._oilKmDesde = desde > OIL_MAX_SANE_KM ? null : desde;   // red de seguridad
+    }
   }
 }
 
 // Marca `_inMerge = true` en TODOS los remitos que forman parte de una unión
 // (el que tiene unir_anterior + la carga base con la que se une, encadenado),
 // para poder pintarlos iguales y ver de un vistazo que están unidos.
+// Se agrupa por CAMIÓN (cadena): el tanque es del camión.
 function computeMergeGroups(remitos) {
+  computeChains(remitos);
   const byChofer = {};
   for (const r of (remitos || [])) {
     r._inMerge = false;
     r._groupTopKm = null; r._groupLitros = null; r._groupTopFecha = null;
     if (r.km == null) continue;
-    (byChofer[r.chofer_id] = byChofer[r.chofer_id] || []).push(r);
+    (byChofer[r._chain] = byChofer[r._chain] || []).push(r);
   }
   for (const cid in byChofer) {
     const list = byChofer[cid].slice().sort((a, b) => a.km - b.km);
@@ -1081,12 +1203,11 @@ async function loadAdminContent(useCache = false) {
   if (S.adminTab === 'conductores')  return loadConductores(main);
   if (S.adminTab === 'configuracion')return loadConfiguracion(main);
 
-  let all, choferes, oilChanges;
+  let all, choferes;
 
   if (useCache) {
     all        = Object.values(_remitosCache);
     choferes   = _choferesList || [];
-    oilChanges = _oilChangesCache || [];
   } else {
     main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
     let query = sb
@@ -1121,13 +1242,16 @@ async function loadAdminContent(useCache = false) {
     all.forEach(r => { _remitosCache[r.id] = r; });
     _choferesList = choferes;
 
-    // Cambio de aceite: puntos de cambio (tolerante si la columna no existe).
-    oilChanges = [];
+    // Set LIVIANO de TODOS los remitos (sin fotos, sin filtros): hace falta el
+    // historial completo para reconstruir cada camión (formaciones), el consumo y
+    // el aceite, aunque la lista de pantalla esté filtrada. Tolerante a columnas.
+    _lightCache = [];
     try {
-      const res = await sb.from('remitos').select('chofer_id, km').eq('cambio_aceite', true);
-      if (!res.error) oilChanges = res.data || [];
-    } catch (e) { /* columna aún no creada */ }
-    _oilChangesCache = oilChanges;
+      let resL = await sb.from('remitos')
+        .select('id, chofer_id, km, fecha_carga, created_at, litros, unir_anterior, cambio_aceite, choferes(nombre)');
+      if (resL.error) resL = await sb.from('remitos').select('id, chofer_id, km, fecha_carga, created_at, litros, choferes(nombre)');
+      if (!resL.error) _lightCache = resL.data || [];
+    } catch (e) { /* sin conexión: se calcula sobre lo visible */ }
 
     // Base de aceite MANUAL por chofer (tolerante si las columnas no existen).
     // Primero la base propia del chofer (v47); después la de su UNIDAD asignada,
@@ -1151,8 +1275,7 @@ async function loadAdminContent(useCache = false) {
   // En "Todos" separamos activos de archivados (sección colapsable al final).
   const activos    = S.adminTab === 'todos' ? all.filter(r => !r.archivado) : all;
   const archivados = S.adminTab === 'todos' ? all.filter(r =>  r.archivado) : [];
-  computeOilStatus(all, oilChanges, _choferesBaseCache);
-  computeMergeGroups(all);   // marca los remitos que forman una unión (para pintarlos)
+  aplicarDerivados(all, _lightCache, _choferesBaseCache);   // camión, aceite, uniones y viaje de cada card
 
   // Badge de "Pendientes" en el sidebar (remitos con deuda, no archivados).
   // Solo con el set completo: si hay un filtro activo (chofer/mes en "Todos")
@@ -1397,16 +1520,44 @@ function bindBuscador(main) {
   if ((_buscarNumero || '').trim()) aplicarBuscadorRemitos(main);
 }
 
-// Lista de cards con separadores de consumo entre cargas consecutivas.
+// Calcula camión/aceite/uniones/viaje sobre el set COMPLETO (`light`) y copia el
+// resultado a las cards visibles (`displayed`, por id). Sin set completo (offline)
+// se calcula sobre lo visible, como antes.
+function aplicarDerivados(displayed, light, bases) {
+  const base = (light && light.length) ? light : displayed;
+  computeOilStatus(base, null, bases);
+  computeMergeGroups(base);
+  const viajes = computeViajes(base);
+  const byId = {};
+  for (const r of base) if (r.id != null) byId[r.id] = r;
+  const viajeByBase = {};
+  for (const v of viajes) if (v.baseId != null) viajeByBase[v.baseId] = v;
+  for (const r of displayed) {
+    const src = byId[r.id];
+    if (src && src !== r) {
+      r._chain = src._chain;
+      r._oilKmDesde = src._oilKmDesde;
+      r._inMerge = src._inMerge;
+    }
+    r._viaje = viajeByBase[r.id] || null;
+  }
+}
+
+// Lista de cards con separadores de consumo. Cada card "base" de una carga lleva
+// su viaje (desde la carga anterior DEL MISMO CAMIÓN). Se muestra debajo si la card
+// siguiente es justo esa carga anterior (como siempre), o si la anterior la hizo
+// OTRO chofer (cambio de formación) — así se ve el consumo del camión nuevo.
 function renderRemitoList(remitos) {
   const pieces = [];
   for (let i = 0; i < remitos.length; i++) {
-    pieces.push(renderRemitoCard(remitos[i]));
-    if (i + 1 < remitos.length) {
-      // remitos[i] es MÁS NUEVO que remitos[i+1] (orden desc por fecha_carga)
-      const sep = renderConsumoSeparator(remitos[i], remitos[i + 1]);
-      if (sep) pieces.push(sep);
-    }
+    const r = remitos[i];
+    pieces.push(renderRemitoCard(r));
+    const v = r._viaje;
+    if (!v) continue;
+    const next = remitos[i + 1];
+    const otroChofer = v.prevChoferId && v.prevChoferId !== r.chofer_id;
+    if ((next && next.id === v.prevTopId) || otroChofer)
+      pieces.push(renderViajeSeparator(v, otroChofer ? (v.prevChofer || 'otro chofer') : null));
   }
   return pieces.join('');
 }
@@ -1446,15 +1597,10 @@ async function toggleAceite(id) {
   if (error) { toast('No se pudo guardar (¿corriste la migración del aceite?)', 'err'); return; }
   toast(nuevo ? 'Cambio de aceite marcado 🛢 ✓' : 'Cambio de aceite quitado');
   if (r) r.cambio_aceite = nuevo;
-  // Los puntos de cambio de aceite son de TODA la tabla, no del subconjunto que
-  // está en pantalla (puede haber uno en un mes anterior o en un remito
-  // archivado, fuera de _remitosCache). Los re-consulto DB-wide —es una query
-  // mínima de 2 columnas, sin fotos— para no perder referencias y que la alerta
-  // salga bien. Después re-renderizo sin volver a bajar remitos ni fotos.
-  try {
-    const res = await sb.from('remitos').select('chofer_id, km').eq('cambio_aceite', true);
-    if (!res.error) _oilChangesCache = res.data || [];
-  } catch (e) { /* columna aún no creada */ }
+  // El set liviano (_lightCache) tiene TODOS los remitos (no solo los de pantalla),
+  // así que basta con actualizar esa fila: el aceite se recalcula por camión sin red.
+  const l = _lightCache.find(x => x.id === id);
+  if (l) l.cambio_aceite = nuevo;
   loadAdminContent(true);
 }
 
@@ -1479,6 +1625,8 @@ async function toggleUnir(id) {
   if (error) { toast('No se pudo guardar (¿corriste la migración de unir?)', 'err'); return; }
   toast(nuevo ? 'Unido con la carga anterior 🔗 — el consumo se combina' : 'Separado de la carga anterior');
   if (r) r.unir_anterior = nuevo;
+  const l = _lightCache.find(x => x.id === id);
+  if (l) l.unir_anterior = nuevo;
   loadAdminContent(true);
 }
 
@@ -1486,20 +1634,23 @@ async function toggleUnir(id) {
 // HISTORIAL — consumo L/100km por viaje (carga a carga)
 // =====================================================
 
-// Arma un "viaje" por cada par de cargas consecutivas del mismo chofer.
+// Arma un "viaje" por cada par de cargas consecutivas del MISMO CAMIÓN (cadena,
+// ver computeChains), aunque las haya hecho otro chofer (rotación de formaciones).
 // distancia = km(nuevo) − km(anterior); litros = los cargados en el nuevo.
+// El viaje se atribuye al chofer de la carga nueva (es quien manejó ese tramo).
 // Si una carga tiene `unir_anterior` (el tanque no se llenó completo), se fusiona
 // con la carga previa: sus litros se suman y el km/fecha avanzan, para que el
 // consumo se calcule sobre el tramo combinado (tanque lleno a tanque lleno real).
 function computeViajes(remitos) {
-  const byChofer = {};
+  computeChains(remitos);
+  const byChain = {};
   for (const r of (remitos || [])) {
     if (r.km == null) continue;
-    (byChofer[r.chofer_id] = byChofer[r.chofer_id] || []).push(r);
+    (byChain[r._chain] = byChain[r._chain] || []).push(r);
   }
   const viajes = [];
-  for (const cid in byChofer) {
-    const list = byChofer[cid].slice().sort((a, b) => a.km - b.km);
+  for (const ch in byChain) {
+    const list = byChain[ch].slice().sort((a, b) => (a.km - b.km) || cmpCrono(a, b));
 
     // Fusionar las cargas "unir_anterior" con la anterior (encadena si hay varias).
     const cargas = [];
@@ -1511,9 +1662,12 @@ function computeViajes(remitos) {
         prev.litros += litros;
         prev.km = r.km;
         prev.fecha = r.fecha_carga;
+        prev.topId = r.id;
+        prev.choferId = r.chofer_id;
         if (nombre) prev.nombre = nombre;
       } else {
-        cargas.push({ km: r.km, litros, fecha: r.fecha_carga, nombre });
+        cargas.push({ km: r.km, litros, fecha: r.fecha_carga, nombre,
+                      choferId: r.chofer_id, baseId: r.id, topId: r.id });
       }
     }
 
@@ -1521,15 +1675,22 @@ function computeViajes(remitos) {
       const older = cargas[i - 1], newer = cargas[i];
       const distance = newer.km - older.km;
       if (distance <= 0) continue;
+      if (distance > VIAJE_MAX_KM) continue;   // por construcción no pasa; red de seguridad
       if (newer.litros <= 0) continue;
       viajes.push({
-        chofer_id:  cid,
-        chofer:     newer.nombre || older.nombre || 'Desconocido',
-        fechaDesde: older.fecha,
-        fechaHasta: newer.fecha,
-        km:         distance,
-        litros:     newer.litros,
-        l100:       newer.litros / distance * 100,
+        chofer_id:    newer.choferId,
+        chofer:       newer.nombre || older.nombre || 'Desconocido',
+        fechaDesde:   older.fecha,
+        fechaHasta:   newer.fecha,
+        km:           distance,
+        litros:       newer.litros,
+        l100:         newer.litros / distance * 100,
+        chain:        ch,
+        baseId:       newer.baseId,     // remito "base" de la carga nueva (debajo va el separador)
+        topId:        newer.topId,
+        prevTopId:    older.topId,      // última carga anterior de ESE camión
+        prevChoferId: older.choferId,   // si difiere → hubo cambio de formación
+        prevChofer:   older.nombre || null,
       });
     }
   }
@@ -1654,7 +1815,7 @@ async function loadDashboard(main) {
   main.innerHTML = `<div class="loading-inline">Cargando...</div>`;
   const { data: remitos, error } = await sb
     .from('remitos')
-    .select('chofer_id, fecha_carga, km, litros, unir_anterior, efectivo, pagado, litros_pagados, numero, archivado, choferes(nombre)');
+    .select('id, chofer_id, fecha_carga, created_at, km, litros, unir_anterior, efectivo, pagado, litros_pagados, numero, archivado, choferes(nombre)');
 
   if (error) {
     main.innerHTML = `<p class="empty-msg">Error al cargar el dashboard. Verificá tu conexión.</p>`;
@@ -1799,8 +1960,7 @@ async function loadConductores(main) {
   const rows = choferes.length
     ? choferes.map(c => {
         const tieneBase = soportaAceite && c.aceite_base != null;
-        const oCambio   = (soportaAceite && c.aceite_base != null && c.aceite_base_km != null)
-          ? Number(c.aceite_base_km) - Number(c.aceite_base) : null;   // odómetro del último cambio
+        const oCambio   = soportaAceite ? vbaseDe(c) : null;   // odómetro del último cambio
         const aceiteBtn = soportaAceite
           ? `<button class="cond-aceite ${tieneBase ? 'is-set' : ''}" data-id="${c.id}" data-nombre="${esc(c.nombre)}" data-odo="${oCambio != null ? oCambio : ''}" title="Odómetro del último cambio de aceite">🛢 ${tieneBase ? Number(c.aceite_base).toLocaleString('es-AR') + ' km' : 'Aceite'}</button>`
           : '';
@@ -1885,12 +2045,19 @@ function showAceiteEditor(id, nombre, odoActual) {
     let v = parseFloat(el.querySelector('#ace-input').value);
     if (isNaN(v) || v < 0) { toast('Ingresá un número válido', 'err'); return; }
     const r = await guardarAceiteBase(id, v);
+    if (r && r.mayor != null) { toast(msgOdoMayor(v, r.mayor), 'err'); return; }
     if (r === 'no-remito') { toast('Este chofer todavía no tiene cargas para anclar el contador', 'err'); return; }
     if (r) toast('Último cambio de aceite guardado ✓');
     else   toast('No se pudo guardar (¿corriste la migración del aceite por chofer?)', 'err');
     close(); loadAdminContent();
   });
   setTimeout(() => el.querySelector('#ace-input').focus(), 100);
+}
+
+// Mensaje cuando el odómetro del cambio de aceite es mayor que el odómetro actual.
+function msgOdoMayor(odo, actual) {
+  const f = n => Number(n).toLocaleString('es-AR');
+  return `No se guardó: ${f(odo)} es mayor que el odómetro actual del camión (${f(actual)} km). Poné el km del tablero de cuando se cambió el aceite.`;
 }
 
 // Guarda (o quita con odo=null) el aceite del chofer. `odo` = ODÓMETRO del último
@@ -1909,6 +2076,7 @@ async function guardarAceiteBase(id, odo) {
     .limit(5);
   const ultimo = (data || []).find(r => r.km != null) || null;
   if (!ultimo) return 'no-remito';
+  if (odo > Number(ultimo.km)) return { mayor: Number(ultimo.km) };   // imposible: no guarda
   const { error } = await sb.from('choferes').update({
     aceite_base:       Math.max(0, ultimo.km - odo),
     aceite_base_km:    ultimo.km,
@@ -2009,6 +2177,7 @@ async function loadUnidades(main) {
     addBtn.disabled = true;
     const r = await guardarUnidad(null, { numero, chofer_id: choferId }, aceite, null, latest);
     addBtn.disabled = false;
+    if (r === 'mayor') { toast(msgOdoMayor(aceite, latest[choferId].km), 'err'); return; }
     if (r === 'sin-ancla') { toast('Unidad creada. El km de aceite necesita que el chofer tenga una carga — cargalo después.', 'warn'); loadUnidades(main); }
     else if (r) { toast(`Unidad ${numero} creada ✓`); loadUnidades(main); }
     else toast('No se pudo crear (¿corriste la migración de unidades?)', 'err');
@@ -2023,15 +2192,15 @@ async function loadUnidades(main) {
 // Internamente guardamos aceite_base = km desde el cambio = aceite_base_km − odo,
 // así que el odómetro del cambio = aceite_base_km − aceite_base.
 function odoCambioDe(u) {
-  return (u && u.aceite_base != null && u.aceite_base_km != null)
-    ? Number(u.aceite_base_km) - Number(u.aceite_base) : null;
+  return vbaseDe(u);   // contempla también el odómetro cargado por error en el campo viejo
 }
 
 // Crea (id=null) o actualiza una unidad.
 // `odo` = ODÓMETRO del último cambio de aceite (el km del tablero cuando se cambió).
 // Se convierte a "km desde el cambio" anclado a la última carga del chofer:
 //   aceite_base = max(0, odómetro_de_la_última_carga − odo).
-// Devuelve: true (ok) · 'sin-ancla' (ok pero no se pudo anclar) · false (error).
+// Devuelve: true (ok) · 'sin-ancla' (ok pero no se pudo anclar) · false (error)
+//           · 'mayor' (no guarda: el odómetro del cambio supera el odómetro actual).
 async function guardarUnidad(id, campos, odo, prev, latest) {
   const payload = { ...campos };
   const choferId = campos.chofer_id;
@@ -2043,6 +2212,9 @@ async function guardarUnidad(id, campos, odo, prev, latest) {
     // mismo chofer y mismo odómetro de cambio → mantengo el ancla (no salta al renombrar)
     payload.aceite_base = prev.aceite_base; payload.aceite_base_km = prev.aceite_base_km; payload.aceite_base_fecha = prev.aceite_base_fecha;
   } else if (choferId && latest[choferId]) {
+    // El cambio no puede ser en un km MAYOR al odómetro actual del camión: antes se
+    // guardaba en 0 sin avisar y parecía que "no se guardaba". Ahora se rechaza.
+    if (odo > Number(latest[choferId].km)) return 'mayor';
     payload.aceite_base = Math.max(0, latest[choferId].km - odo);
     payload.aceite_base_km = latest[choferId].km;
     payload.aceite_base_fecha = latest[choferId].fecha;
@@ -2097,6 +2269,7 @@ function showUnidadEditor(unidad, choferes, latest, asignados, onOk) {
     if (isNaN(aceite)) aceite = null;
     if (numero.length < 1) { toast('Poné un número de unidad', 'err'); return; }
     const r = await guardarUnidad(unidad.id, { numero, chofer_id: choferId }, aceite, unidad, latest);
+    if (r === 'mayor') { toast(msgOdoMayor(aceite, latest[choferId].km), 'err'); return; }
     if (r === false) { toast('No se pudo guardar', 'err'); return; }
     if (r === 'sin-ancla') toast('Guardado. El km de aceite necesita que el chofer tenga una carga.', 'warn');
     else toast('Unidad actualizada ✓');
@@ -2154,8 +2327,9 @@ async function loadConfiguracion(main) {
 async function loadHistorial(main) {
   // Trae TODO el histórico (incluye archivados) para que el consumo no se corte
   // en los bordes de mes. El filtro de mes se aplica sobre el viaje, después.
-  let q = sb.from('remitos').select('chofer_id, fecha_carga, km, litros, unir_anterior, choferes(nombre)');
-  if (S.filtroChofer) q = q.eq('chofer_id', S.filtroChofer);
+  // Sin filtrar por chofer en la consulta: para reconstruir cada camión (cambios de
+  // formación) hace falta el historial de todos. El filtro se aplica a los viajes.
+  const q = sb.from('remitos').select('id, chofer_id, fecha_carga, created_at, km, litros, unir_anterior, choferes(nombre)');
 
   const [{ data: remitos, error }, { data: choferes }] = await Promise.all([
     q,
@@ -2168,7 +2342,8 @@ async function loadHistorial(main) {
   }
 
   let viajes = computeViajes(remitos || []);
-  if (S.filtroMes) viajes = viajes.filter(v => (v.fechaHasta || '').startsWith(S.filtroMes));
+  if (S.filtroChofer) viajes = viajes.filter(v => v.chofer_id === S.filtroChofer);
+  if (S.filtroMes)    viajes = viajes.filter(v => (v.fechaHasta || '').startsWith(S.filtroMes));
 
   let html = filtrosHTML(choferes);
 
@@ -2221,6 +2396,8 @@ function renderViaje(v) {
           <span class="consumo-pill">VIAJE</span>
           <span class="consumo-dates">${fmt(v.fechaDesde)} <span class="consumo-arrow">→</span> ${fmt(v.fechaHasta)}</span>
         </div>
+        ${v.prevChoferId && v.prevChoferId !== v.chofer_id
+          ? `<div class="consumo-formacion">🔄 Nueva formación — sigue de la última carga de <b>${esc(v.prevChofer || 'otro chofer')}</b> en este camión</div>` : ''}
         <div class="consumo-grid">
           <div class="consumo-cell">
             ${iconRoute}
@@ -2364,25 +2541,15 @@ function renderRemitoCard(r) {
   `;
 }
 
-// Separador entre dos cargas consecutivas del mismo chofer.
-// newer = carga más reciente (sus litros = lo consumido en el viaje anterior, que terminó en newer.km).
-// older = carga anterior (km de partida del viaje analizado).
-function renderConsumoSeparator(newer, older) {
-  if (!newer || !older) return '';
-  if (newer.chofer_id !== older.chofer_id) return '';
-  // Si esta carga está "unida" con la anterior (tanque no lleno), el consumo par-a-par
-  // no aplica: el combinado real se ve en el Historial. No mostramos el separador.
-  if (newer.unir_anterior) return '';
-  if (newer.km == null || older.km == null) return '';
-  // Si "newer" es la base de una unión (tanque no lleno), usar los agregados del
-  // grupo: km del tope y litros combinados de todas las cargas unidas.
-  const nkm     = newer._groupTopKm != null ? newer._groupTopKm : newer.km;
-  const nlitros = newer._groupLitros != null ? newer._groupLitros : (parseFloat(newer.litros) || 0);
-  const nfecha  = newer._groupTopFecha || newer.fecha_carga;
-  const distance = nkm - older.km;
-  if (distance <= 0) return '';
-  if (!nlitros || nlitros <= 0) return '';
-  const l100 = (nlitros / distance) * 100;
+// Separador de consumo de un viaje (de computeViajes): km recorridos por el camión
+// desde su carga anterior, litros de la carga nueva (combinados si hubo unión) y L/100km.
+// `deChofer` = nombre del chofer de la carga anterior cuando fue OTRO (nueva formación).
+function renderViajeSeparator(v, deChofer) {
+  if (!v) return '';
+  const distance = v.km, nlitros = v.litros, l100 = v.l100;
+  const formacion = deChofer
+    ? `<div class="consumo-formacion">🔄 Nueva formación — sigue de la última carga de <b>${esc(deChofer)}</b> en este camión (${fmt(v.fechaDesde)})</div>`
+    : '';
 
   const iconRoute = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21L8 3"/><path d="M21 21L16 3"/><path d="M12 5v2"/><path d="M12 11v2"/><path d="M12 17v2"/></svg>`;
   const iconFuel  = `<svg class="consumo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M3 22h14"/><path d="M4 13h12"/><path d="M16 8h1a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg>`;
@@ -2392,8 +2559,9 @@ function renderConsumoSeparator(newer, older) {
     <div class="consumo-separator">
       <div class="consumo-header">
         <span class="consumo-pill">VIAJE</span>
-        <span class="consumo-dates">${fmt(older.fecha_carga)} <span class="consumo-arrow">→</span> ${fmt(nfecha)}</span>
+        <span class="consumo-dates">${fmt(v.fechaDesde)} <span class="consumo-arrow">→</span> ${fmt(v.fechaHasta)}</span>
       </div>
+      ${formacion}
       <div class="consumo-grid">
         <div class="consumo-cell">
           ${iconRoute}
@@ -2495,10 +2663,11 @@ function showPagoParcial(id) {
 }
 
 // Cache de remitos + lista de choferes (para el editor del admin)
-// _oilChangesCache: puntos de cambio de aceite; se reusa al re-render sin red.
+// _lightCache: TODOS los remitos en versión liviana (sin fotos) para reconstruir
+// camiones/consumo/aceite; se reusa al re-render sin red.
 let _remitosCache = {};
 let _choferesList = [];
-let _oilChangesCache = [];
+let _lightCache = [];
 let _choferesBaseCache = {};   // base de aceite manual por chofer (km desde último cambio)
 // Buscador por N° de remito (filtra las cards en el lugar, sin re-render).
 let _buscarNumero = '';

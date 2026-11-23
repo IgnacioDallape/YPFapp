@@ -77,8 +77,23 @@ deuda = Σ litrosPendientes(r) × precio_litro     (sobre remitos NO archivados)
 litrosPendientes(r) = pagado ? 0 : max(0, litros − litros_pagados)
 ```
 
+### Formaciones: el km sigue al CAMIÓN — `computeChains()`
+El odómetro es del camión, no del chofer. Cuando los choferes rotan de camión, el historial
+de un chofer mezcla dos odómetros. Sin tocar datos, la app reconstruye cada camión ("cadena"):
+1. Por chofer, en orden cronológico, se corta un **tramo** cada vez que el km salta (sube o baja)
+   más de `VIAJE_MAX_KM` (50.000) → se subió a otro camión.
+2. Cada tramo nuevo (salvo el primero de cada chofer) se **enlaza** con el tramo de cualquier
+   chofer que **terminó antes** y cuyo último km queda justo debajo (0..50.000) → mismo camión,
+   otra formación. Un camión que seguía en uso no se enlaza.
+
+Consumo, uniones (`unir_anterior`) y aceite se calculan **por camión**. Ej.: Rolando pasa al
+camión que manejaba Fabian → su 1ª carga se mide desde la última de Fabian (1.218.556 →
+1.220.376 = 1.820 km). El viaje se atribuye al chofer de la carga nueva. Límite: si dos camiones
+tienen odómetros a menos de 50.000 km entre sí, el enlace automático puede no distinguirlos.
+
 ### Consumo por viaje (pestaña Historial) — `computeViajes()`
-Un **viaje** es el tramo entre dos cargas consecutivas del **mismo chofer** (ordenadas por km):
+Un **viaje** es el tramo entre dos cargas consecutivas del **mismo camión** (ordenadas por km),
+aunque las haya hecho otro chofer (ver Formaciones):
 ```
 distancia (km) = km(carga nueva) − km(carga anterior)
 litros         = litros cargados en la carga nueva   (rellenan lo consumido en el tramo)

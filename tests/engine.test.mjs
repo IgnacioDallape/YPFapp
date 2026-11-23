@@ -53,7 +53,7 @@ sandbox.supabase = {
 // ── Cargar app.js y exportar las funciones puras ──────────────────────
 const src = readFileSync(APP, 'utf8');
 const exportLine = `
-;globalThis.__T = { esc, fmtLitros, litrosTotal, litrosPagadosOf, litrosPendientes, estadoPago, computeViajes, computeOilStatus, computeMergeGroups, computeDashboard, OIL_ALERT_KM };`;
+;globalThis.__T = { esc, fmtLitros, litrosTotal, litrosPagadosOf, litrosPendientes, estadoPago, computeViajes, computeOilStatus, computeMergeGroups, computeDashboard, computeChains, OIL_ALERT_KM, guardarUnidad, guardarAceiteBase, __sb: (typeof sb !== 'undefined' ? sb : null) };`;
 vm.createContext(sandbox);
 vm.runInContext(src + exportLine, sandbox, { filename: 'app.js' });
 const T = sandbox.__T;
@@ -271,6 +271,69 @@ const oilNoBase = [{ id: 1, chofer_id: 'a', km: 1000 }, { id: 2, chofer_id: 'a',
 T.computeOilStatus(oilNoBase, [{ chofer_id: 'a', km: 1000 }]);
 eq('aceite sin base: cuenta desde el cambio real', oilNoBase[1]._oilKmDesde, 29000);
 
+// Cambio de camión: punto de aceite de OTRO camión → contador absurdo → null (no falso aviso).
+const oilOtroCamion = [{ id: 1, chofer_id: 'a', km: 1220376, fecha_carga: '2026-10-31' }];
+T.computeOilStatus(oilOtroCamion, [{ chofer_id: 'a', km: 20076 }]);  // punto del camión viejo
+eq('aceite: contador absurdo (cambio de camión) → null', oilOtroCamion[0]._oilKmDesde, null);
+
+// computeViajes: salto gigante entre dos cargas (cambio de camión) → no es un viaje.
+const vCambioCamion = T.computeViajes([
+  { chofer_id: 'a', fecha_carga: '2026-10-26', km: 22519,   litros: 623, choferes: { nombre: 'Rolando' } }, // camión viejo
+  { chofer_id: 'a', fecha_carga: '2026-10-31', km: 1220376, litros: 633, choferes: { nombre: 'Rolando' } }, // camión nuevo
+]);
+eq('viajes: salto de camión (1.197.857 km) descartado → []', vCambioCamion, []);
+// Pero dentro del camión nuevo sí calcula normal
+const vNuevoCamion = T.computeViajes([
+  { chofer_id: 'a', fecha_carga: '2026-10-31', km: 1220376, litros: 633, choferes: { nombre: 'Rolando' } },
+  { chofer_id: 'a', fecha_carga: '2026-11-02', km: 1220776, litros: 140, choferes: { nombre: 'Rolando' } }, // 400 km normal
+]);
+ok('viajes: dentro del camión nuevo calcula normal (140/400*100=35)', vNuevoCamion.length === 1 && vNuevoCamion[0].km === 400 && vNuevoCamion[0].l100 === 35);
+
+// ── 10) Formaciones: el km sigue al CAMIÓN cuando los choferes rotan ──────
+// Caso real: el camión de ~1,2M km lo manejaba Fabian (hasta 28/10) y pasó a Rolando
+// (desde 31/10). Rolando antes estaba en otro camión (22.519).
+const formacion = () => ([
+  { id: 'f1', chofer_id: 'F', fecha_carga: '2026-10-25', km: 1217894, litros: 280, choferes: { nombre: 'Fabian' } },
+  { id: 'f2', chofer_id: 'F', fecha_carga: '2026-10-28', km: 1218556, litros: 300, choferes: { nombre: 'Fabian' } },
+  { id: 'r1', chofer_id: 'R', fecha_carga: '2026-10-26', km: 22519,   litros: 623, choferes: { nombre: 'Rolando' } },
+  { id: 'r2', chofer_id: 'R', fecha_carga: '2026-10-31', km: 1220376, litros: 633, choferes: { nombre: 'Rolando' } },
+]);
+const fRem = formacion();
+T.computeChains(fRem);
+ok('formación: r2 queda en el mismo camión que Fabian', fRem[3]._chain === fRem[0]._chain);
+ok('formación: r1 (camión viejo de Rolando) es otro camión', fRem[2]._chain !== fRem[3]._chain);
+const vForm = T.computeViajes(formacion());
+const vRol = vForm.find(v => v.chofer_id === 'R');
+ok('formación: hay viaje de Rolando en el camión nuevo', !!vRol);
+ok('formación: arranca de la última carga de Fabian (1.218.556 → 1.220.376 = 1.820 km)', vRol && vRol.km === 1820);
+ok('formación: litros de Rolando (633) y L/100km ≈ 34,8', vRol && vRol.litros === 633 && Math.abs(vRol.l100 - 633 / 1820 * 100) < 1e-9);
+ok('formación: viaje sabe que venía de Fabian', vRol && vRol.prevChoferId === 'F' && vRol.prevChofer === 'Fabian' && vRol.prevTopId === 'f2' && vRol.baseId === 'r2');
+ok('formación: no hay viaje fantasma 22.519 → 1.220.376', !vForm.some(v => v.km > 50000));
+ok('formación: Fabian conserva su viaje 25/10 → 28/10 (662 km)', vForm.some(v => v.chofer_id === 'F' && v.km === 662));
+
+// Aceite sigue al camión: el cambio marcado por Fabian vale para Rolando en ese camión.
+const fOil = formacion();
+fOil[0].cambio_aceite = true;   // Fabian cambió el aceite a los 1.217.894
+T.computeOilStatus(fOil, null, {});
+eq('aceite por camión: Rolando cuenta desde el cambio de Fabian (2.482)', fOil[3]._oilKmDesde, 1220376 - 1217894);
+eq('aceite por camión: el camión viejo de Rolando no hereda ese cambio', fOil[2]._oilKmDesde, null);
+
+// Odómetro cargado por error en el campo viejo de "km desde" (1.200.300) → se
+// interpreta como odómetro del cambio → 20.076 km desde el cambio.
+const fLeg = formacion();
+T.computeOilStatus(fLeg, null, { R: { aceite_base: 1200300, aceite_base_km: 1220376, aceite_base_fecha: '2026-10-31' } });
+eq('aceite: odómetro mal cargado como "km desde" se reinterpreta (20.076)', fLeg[3]._oilKmDesde, 20076);
+
+// Guarda de concurrencia: un camión que sigue en uso no se "presta" a otro chofer.
+const vConc = T.computeViajes([
+  { id: 'a1', chofer_id: 'A', fecha_carga: '2026-01-01', km: 100000, litros: 100, choferes: { nombre: 'A' } },
+  { id: 'a2', chofer_id: 'A', fecha_carga: '2026-01-10', km: 101000, litros: 100, choferes: { nombre: 'A' } },
+  { id: 'b1', chofer_id: 'B', fecha_carga: '2026-01-01', km: 20000,  litros: 100, choferes: { nombre: 'B' } },
+  { id: 'b2', chofer_id: 'B', fecha_carga: '2026-01-05', km: 100500, litros: 100, choferes: { nombre: 'B' } }, // salto, pero A sigue en su camión
+]);
+ok('concurrencia: no se enlaza a un camión que seguía en uso', !vConc.some(v => v.chofer_id === 'B'));
+ok('concurrencia: A conserva su viaje normal (1.000 km)', vConc.some(v => v.chofer_id === 'A' && v.km === 1000));
+
 // ── 8) Efectivo (fuera de cuenta corriente) ──────────────────────────
 // No debe litros en la cuenta corriente → 0 (queda fuera de la deuda).
 eq('efectivo: litrosPendientes → 0', T.litrosPendientes({ litros: 100, litros_pagados: 0, efectivo: true }), 0);
@@ -443,6 +506,36 @@ ok('fleet vacío: totalLitros 0', dashFleet0.fleet.totalLitros === 0);
 ok('fleet vacío: promedio null', dashFleet0.fleet.promedioL100 === null);
 ok('fleet vacío: pendientesCount 0', dashFleet0.pendientesCount === 0);
 eq('fleet vacío: monthRange null', dashFleet0.monthRange, null);
+
+// ── 11) Odómetro del cambio mayor al actual → se rechaza (no se guarda 0 en silencio) ──
+// Caso real: unidad nl10 (Mauricio, camión en 26.209 km) y cargaron 1.041.759.
+{
+  const writes = [];
+  const fakeFrom = () => ({
+    update(p) { writes.push(p); return { eq: async () => ({ error: null }) }; },
+    insert(p) { writes.push(p); return Promise.resolve({ error: null }); },
+    select() { const q = { eq: () => q, order: () => q, limit: async () => ({ data: [{ km: 26209, fecha_carga: '2026-11-10' }] }) }; return q; },
+  });
+  ok('test: hay cliente supabase stub para interceptar', !!T.__sb);
+  const realFrom = T.__sb && T.__sb.from;
+  if (T.__sb) T.__sb.from = fakeFrom;
+  const latest = { M: { km: 26209, fecha: '2026-11-10' } };
+  const nl10 = { id: 'u3', numero: 'nl10', chofer_id: 'M', aceite_base: 12197, aceite_base_km: 83040, aceite_base_fecha: '2026-10-29' };
+  const r1 = await T.guardarUnidad('u3', { numero: 'nl10', chofer_id: 'M' }, 1041759, nl10, latest);
+  eq('unidad: odómetro del cambio > actual → "mayor"', r1, 'mayor');
+  ok('unidad: con "mayor" NO escribe nada en la base', writes.length === 0);
+  const r2 = await T.guardarUnidad('u3', { numero: 'nl10', chofer_id: 'M' }, 10322, nl10, latest);
+  ok('unidad: odómetro válido guarda', r2 === true && writes.length === 1);
+  ok('unidad: guarda km desde el cambio = 26.209 − 10.322 = 15.887', writes[0] && writes[0].aceite_base === 15887 && writes[0].aceite_base_km === 26209);
+  const r3 = await T.guardarUnidad('u3', { numero: 'nl10', chofer_id: 'M' }, 26209, nl10, latest);
+  ok('unidad: odómetro igual al actual es válido (0 km)', r3 === true && writes[1] && writes[1].aceite_base === 0);
+  writes.length = 0;
+  const r4 = await T.guardarAceiteBase('M', 1041759);
+  ok('chofer: odómetro del cambio > actual → {mayor} sin escribir', r4 && r4.mayor === 26209 && writes.length === 0);
+  const r5 = await T.guardarAceiteBase('M', 10322);
+  ok('chofer: odómetro válido guarda 15.887', r5 === true && writes[0] && writes[0].aceite_base === 15887);
+  if (T.__sb) T.__sb.from = realFrom;
+}
 
 // ── Resumen ───────────────────────────────────────────────────────────
 console.log(`\nRemitosApp · tests del motor`);

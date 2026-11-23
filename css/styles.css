@@ -304,6 +304,8 @@ input[type="date"].inp, input[type="month"].inp { cursor: pointer; }
 /* ── Consumo separator ── */
 .consumo-separator { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 14px 10px; margin: 4px 2px; box-shadow: var(--shadow-sm); }
 .consumo-header { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 6px; }
+.consumo-formacion { text-align: center; font-size: 0.78rem; color: var(--blue-deep); background: var(--blue-50); border: 1px solid var(--blue-100); border-radius: var(--radius-sm); padding: 5px 10px; margin: 0 0 8px; }
+.consumo-formacion b { font-weight: 700; }
 .consumo-pill { background: var(--surface-2); color: var(--text-mid); border: 1px solid var(--border); font-size: 0.6rem; font-weight: 800; letter-spacing: 0.14em; padding: 2px 9px; border-radius: 999px; }
 .consumo-dates { font-size: 0.82rem; font-weight: 600; color: var(--text); font-family: var(--font); }
 .consumo-arrow { color: var(--blue); font-weight: 700; margin: 0 2px; }
